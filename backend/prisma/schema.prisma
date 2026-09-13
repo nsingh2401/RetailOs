@@ -1,0 +1,1113 @@
+// =============================================================
+// Mobile POS Platform — Prisma Schema
+// Mapped from docs/mobile_pos_schema.sql (28 tables, 18 enums)
+// datasource: PostgreSQL 16 via Supabase
+// =============================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =============================================================
+// ENUMS
+// =============================================================
+
+enum TaxRegimeType {
+  GST
+  VAT
+  SALES_TAX
+  EXEMPT
+  CUSTOM
+
+  @@map("tax_regime_type")
+}
+
+enum UserType {
+  OWNER
+  MANAGER
+  OPERATOR
+
+  @@map("user_type")
+}
+
+enum StoreRole {
+  OWNER
+  MANAGER
+  OPERATOR
+
+  @@map("store_role")
+}
+
+enum IndustryType {
+  APPAREL
+  FOOTWEAR
+  GROCERY
+  PHARMACY
+  ELECTRONICS
+  HARDWARE
+  OPTICAL
+  KITCHENWARE
+  STATIONERY
+  TOYS
+  GIFT
+  BAKERY
+  PAINT
+  FURNITURE
+  JEWELRY
+  BAGS
+  TEA_CAFE
+  PAAN_CIGARETTE
+  GENERAL
+
+  @@map("industry_type")
+}
+
+enum PricingType {
+  FIXED
+  WEIGHT
+  LOOSE
+  NEGOTIABLE
+  MRP
+
+  @@map("pricing_type")
+}
+
+enum BarcodeType {
+  EAN13
+  EAN8
+  QR
+  CODE128
+  UPC
+  GS1
+  INTERNAL
+
+  @@map("barcode_type")
+}
+
+enum UnitOfMeasure {
+  PCS
+  KG
+  GM
+  LTR
+  ML
+  MTR
+  BOX
+  PAIR
+  DOZEN
+  SQFT
+  PACK
+
+  @@map("unit_of_measure")
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  AUDIT
+  RETURN
+  DAMAGE
+  TRANSFER
+
+  @@map("movement_type")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+  PARTIAL
+  CANCELLED
+
+  @@map("invoice_status")
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CREDIT
+  CARD
+  CHEQUE
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum CreditEntryType {
+  CREDIT_SALE
+  PAYMENT
+  ADJUSTMENT
+  REFUND
+
+  @@map("credit_entry_type")
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  CONFLICT
+  FAILED
+
+  @@map("sync_status")
+}
+
+enum SyncOperation {
+  INSERT
+  UPDATE
+  DELETE
+
+  @@map("sync_operation")
+}
+
+enum SyncEntityType {
+  INVOICE
+  INVENTORY_MOVEMENT
+  PAYMENT
+  CUSTOMER
+  PURCHASE_ENTRY
+
+  @@map("sync_entity_type")
+}
+
+enum PlatformType {
+  ANDROID
+  IOS
+
+  @@map("platform_type")
+}
+
+enum FxSource {
+  RBI
+  ECB
+  OPEN_EXCHANGE
+  MANUAL
+
+  @@map("fx_source")
+}
+
+enum CameraAngle {
+  FRONT
+  BACK
+  SIDE
+  BARCODE
+  LABEL
+  TOP
+
+  @@map("camera_angle")
+}
+
+enum LightingCondition {
+  NATURAL
+  FLUORESCENT
+  POOR
+  BRIGHT
+
+  @@map("lighting_condition")
+}
+
+// =============================================================
+// GROUP 1 — FOUNDATION TABLES
+// =============================================================
+
+// 1.1 organizations
+model Organization {
+  orgId           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("org_id")
+  name            String        @db.VarChar(200)
+  slug            String        @unique @db.VarChar(100)
+  planId          String        @db.VarChar(50) @map("plan_id")
+  countryCode     String        @db.Char(2) @map("country_code")
+  defaultCurrency String        @default("INR") @db.Char(3) @map("default_currency")
+  taxRegime       TaxRegimeType @default(GST) @map("tax_regime")
+  locale          String        @default("en-IN") @db.VarChar(10)
+  settings        Json          @default("{}") @db.JsonB
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt       DateTime      @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  stores          Store[]
+  users           User[]
+  taxRules        TaxRule[]
+  supportTickets  SupportTicket[]
+
+  @@map("organizations")
+}
+
+// 1.2 stores
+model Store {
+  storeId           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("store_id")
+  orgId             String       @db.Uuid @map("org_id")
+  name              String       @db.VarChar(200)
+  storeCode         String       @unique @db.VarChar(30) @map("store_code")
+  industryType      IndustryType @default(GENERAL) @map("industry_type")
+  address           Json         @default("{}") @db.JsonB
+  phone             String?      @db.VarChar(20)
+  gstin             String?      @db.VarChar(20)
+  taxId             String?      @db.VarChar(50) @map("tax_id")
+  currencyCode      String       @default("INR") @db.Char(3) @map("currency_code")
+  timezone          String       @default("Asia/Kolkata") @db.VarChar(50)
+  lowStockThreshold  Int          @default(10) @map("low_stock_threshold")
+  slowMoverThreshold Int         @default(5)  @map("slow_mover_threshold")
+  tallyVersion       String?     @db.VarChar(20) @map("tally_version")
+  settings          Json         @default("{}") @db.JsonB
+  isActive          Boolean      @default(true) @map("is_active")
+  createdAt         DateTime     @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt         DateTime     @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  organization         Organization           @relation(fields: [orgId], references: [orgId])
+  userStoreRoles       UserStoreRole[]
+  storeUserInvites     StoreUserInvite[]
+  categories           Category[]
+  brands               Brand[]
+  products             Product[]
+  productVariants      ProductVariant[]
+  productImages        ProductImage[]
+  inventory            Inventory[]
+  inventoryMovements   InventoryMovement[]
+  batches              Batch[]
+  purchaseEntries      PurchaseEntry[]
+  customers            Customer[]
+  invoices             Invoice[]
+  payments             Payment[]
+  customerCreditLedger CustomerCreditLedger[]
+  eventLogs            EventLog[]
+  syncQueue            SyncQueue[]
+  deviceRegistry       DeviceRegistry[]
+  auditLogs            AuditLog[]
+  supportTickets       SupportTicket[]
+
+  @@map("stores")
+}
+
+// 1.3 users
+model User {
+  userId       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("user_id")
+  orgId        String    @db.Uuid @map("org_id")
+  name         String    @db.VarChar(150)
+  email        String?   @unique @db.VarChar(255)
+  phone        String?   @unique @db.VarChar(20)
+  userType     UserType  @map("user_type")
+  passwordHash String?   @db.VarChar(255) @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  avatarUrl    String?   @db.VarChar(500) @map("avatar_url")
+  lastLoginAt  DateTime? @db.Timestamptz() @map("last_login_at")
+  createdAt   DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  organization         Organization           @relation(fields: [orgId], references: [orgId])
+  userStoreRoles       UserStoreRole[]        @relation("UserStoreRoles_userId")
+  grantedStoreRoles    UserStoreRole[]        @relation("UserStoreRoles_grantedBy")
+  storeUserInvites     StoreUserInvite[]
+  inventoryMovements   InventoryMovement[]
+  purchaseEntries      PurchaseEntry[]
+  invoices             Invoice[]
+  payments             Payment[]
+  customerCreditLedger CustomerCreditLedger[]
+  eventLogs            EventLog[]
+  auditLogs            AuditLog[]
+  deviceRegistry       DeviceRegistry[]
+  raisedTickets        SupportTicket[]
+
+  @@map("users")
+}
+
+// 1.4 user_store_roles
+model UserStoreRole {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @db.Uuid @map("user_id")
+  storeId     String    @db.Uuid @map("store_id")
+  role        StoreRole
+  permissions Json?     @db.JsonB
+  grantedBy   String    @db.Uuid @map("granted_by")
+  grantedAt   DateTime  @default(now()) @db.Timestamptz() @map("granted_at")
+  isActive    Boolean   @default(true) @map("is_active")
+
+  user          User  @relation("UserStoreRoles_userId", fields: [userId], references: [userId])
+  store         Store @relation(fields: [storeId], references: [storeId])
+  grantedByUser User  @relation("UserStoreRoles_grantedBy", fields: [grantedBy], references: [userId])
+
+  @@unique([userId, storeId], name: "uq_user_store_role")
+  @@map("user_store_roles")
+}
+
+// 1.5 store_user_invites
+model StoreUserInvite {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeId     String    @db.Uuid @map("store_id")
+  invitedBy   String    @db.Uuid @map("invited_by")
+  phone       String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  role        StoreRole
+  permissions Json?     @db.JsonB
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+
+  store   Store @relation(fields: [storeId], references: [storeId])
+  inviter User  @relation(fields: [invitedBy], references: [userId])
+
+  @@map("store_user_invites")
+}
+
+// =============================================================
+// GROUP 6 — TAX & CURRENCY TABLES
+// (defined before products as products reference tax_rules)
+// =============================================================
+
+// 6.1 tax_rules
+model TaxRule {
+  taxRuleId   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("tax_rule_id")
+  orgId       String        @db.Uuid @map("org_id")
+  name        String        @db.VarChar(100)
+  taxRegime   TaxRegimeType @map("tax_regime")
+  countryCode String        @db.Char(2) @map("country_code")
+  totalRate   Decimal       @db.Decimal(8, 4) @map("total_rate")
+  isInclusive Boolean       @default(false) @map("is_inclusive")
+  isActive    Boolean       @default(true) @map("is_active")
+
+  organization     Organization      @relation(fields: [orgId], references: [orgId])
+  taxComponents    TaxComponent[]
+  products         Product[]
+  invoiceLineItems InvoiceLineItem[]
+
+  @@unique([orgId, name])
+  @@map("tax_rules")
+}
+
+// 6.2 tax_components
+model TaxComponent {
+  componentId   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("component_id")
+  taxRuleId     String  @db.Uuid @map("tax_rule_id")
+  componentName String  @db.VarChar(50) @map("component_name")
+  rate          Decimal @db.Decimal(8, 4)
+  ledgerAccount String? @db.VarChar(50) @map("ledger_account")
+
+  taxRule TaxRule @relation(fields: [taxRuleId], references: [taxRuleId])
+
+  @@map("tax_components")
+}
+
+// 6.3 hsn_codes
+model HsnCode {
+  hsnCode        String  @id @db.VarChar(20) @map("hsn_code")
+  description    String
+  defaultGstRate Decimal @db.Decimal(5, 2) @map("default_gst_rate")
+  category       String? @db.VarChar(100)
+  isService      Boolean   @default(false) @map("is_service")
+  fetchedAt      DateTime? @db.Timestamptz @map("fetched_at")
+
+  products Product[]
+
+  @@map("hsn_codes")
+}
+
+// 6.4 currencies
+model Currency {
+  currencyCode  String  @id @db.Char(3) @map("currency_code")
+  name          String  @db.VarChar(50)
+  symbol        String  @db.VarChar(5)
+  decimalPlaces Int     @default(2) @map("decimal_places")
+  isActive      Boolean @default(true) @map("is_active")
+
+  baseFxRates     FxRate[]        @relation("BaseCurrency")
+  quoteFxRates    FxRate[]        @relation("QuoteCurrency")
+  invoices        Invoice[]
+  payments        Payment[]
+  purchaseEntries PurchaseEntry[]
+
+  @@map("currencies")
+}
+
+// 6.5 fx_rates
+model FxRate {
+  rateId        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("rate_id")
+  baseCurrency  String   @db.Char(3) @map("base_currency")
+  quoteCurrency String   @db.Char(3) @map("quote_currency")
+  rate          Decimal  @db.Decimal(18, 8)
+  source        FxSource @default(MANUAL)
+  effectiveDate DateTime @db.Date @map("effective_date")
+  createdAt     DateTime @default(now()) @db.Timestamptz() @map("created_at")
+
+  baseCurrencyRef  Currency @relation("BaseCurrency", fields: [baseCurrency], references: [currencyCode])
+  quoteCurrencyRef Currency @relation("QuoteCurrency", fields: [quoteCurrency], references: [currencyCode])
+
+  @@unique([baseCurrency, quoteCurrency, effectiveDate])
+  @@map("fx_rates")
+}
+
+// =============================================================
+// GROUP 2 — PRODUCT CATALOG TABLES
+// =============================================================
+
+// 2.1 categories
+model Category {
+  categoryId   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("category_id")
+  storeId      String        @db.Uuid @map("store_id")
+  parentId     String?       @db.Uuid @map("parent_id")
+  name         String        @db.VarChar(150)
+  industryType IndustryType? @map("industry_type")
+  sortOrder    Int           @default(0) @map("sort_order")
+  isActive         Boolean       @default(true) @map("is_active")
+  isCustom         Boolean       @default(false) @map("is_custom")
+  masterCategoryId String?       @db.Uuid @map("master_category_id")
+
+  store    Store      @relation(fields: [storeId], references: [storeId])
+  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [categoryId])
+  children Category[] @relation("CategoryParent")
+  products Product[]
+
+  @@unique([storeId, name, parentId], name: "uq_category_name_store")
+  @@map("categories")
+}
+
+// 2.2 brands
+model Brand {
+  brandId      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("brand_id")
+  storeId      String  @db.Uuid @map("store_id")
+  name         String  @db.VarChar(150)
+  manufacturer String? @db.VarChar(200)
+  contactInfo  Json?   @db.JsonB @map("contact_info")
+  isActive      Boolean @default(true) @map("is_active")
+  isCustom      Boolean @default(false) @map("is_custom")
+  masterBrandId String? @db.Uuid @map("master_brand_id")
+
+  store           Store           @relation(fields: [storeId], references: [storeId])
+  products        Product[]
+  purchaseEntries PurchaseEntry[]
+
+  @@unique([storeId, name])
+  @@map("brands")
+}
+
+// 2.3 products
+model Product {
+  productId         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("product_id")
+  storeId           String        @db.Uuid @map("store_id")
+  categoryId        String?       @db.Uuid @map("category_id")
+  brandId           String?       @db.Uuid @map("brand_id")
+  name              String        @db.VarChar(300)
+  description       String?
+  internalSku       String        @db.VarChar(100) @map("internal_sku")
+  barcode           String?       @db.VarChar(100)
+  barcodeType       BarcodeType?  @map("barcode_type")
+  hsnCode           String?       @db.VarChar(20) @map("hsn_code")
+  taxRuleId         String?       @db.Uuid @map("tax_rule_id")
+  pricingType       PricingType   @default(FIXED) @map("pricing_type")
+  sellingPrice      Decimal       @db.Decimal(15, 4) @map("selling_price")
+  purchasePrice     Decimal       @default(0) @db.Decimal(15, 4) @map("purchase_price")
+  mrp               Decimal?      @db.Decimal(15, 4)
+  unitOfMeasure     UnitOfMeasure @default(PCS) @map("unit_of_measure")
+  hasVariants       Boolean       @default(false) @map("has_variants")
+  hasBatches        Boolean       @default(false) @map("has_batches")
+  lowStockThreshold Int?          @map("low_stock_threshold")
+  isActive          Boolean       @default(true) @map("is_active")
+  imageUrl          String?       @db.VarChar(500) @map("image_url")
+  aiMetadata        Json          @default("{}") @db.JsonB @map("ai_metadata")
+  createdAt         DateTime      @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt         DateTime      @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  store      Store            @relation(fields: [storeId], references: [storeId])
+  category   Category?        @relation(fields: [categoryId], references: [categoryId])
+  brand      Brand?           @relation(fields: [brandId], references: [brandId])
+  hsnCodeRef HsnCode?         @relation(fields: [hsnCode], references: [hsnCode])
+  taxRule    TaxRule?         @relation(fields: [taxRuleId], references: [taxRuleId])
+  variants   ProductVariant[]
+  images     ProductImage[]
+
+  @@unique([storeId, internalSku])
+  @@map("products")
+}
+
+// 2.4 product_variants
+model ProductVariant {
+  variantId         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("variant_id")
+  productId         String   @db.Uuid @map("product_id")
+  storeId           String   @db.Uuid @map("store_id")
+  variantSku        String   @db.VarChar(150) @map("variant_sku")
+  barcode           String?  @db.VarChar(100)
+  variantAttributes Json     @default("{}") @db.JsonB @map("variant_attributes")
+  priceOverride     Decimal? @db.Decimal(15, 4) @map("price_override")
+  purchasePrice     Decimal? @db.Decimal(15, 4) @map("purchase_price")
+  stockQuantity     Decimal  @default(0) @db.Decimal(15, 4) @map("stock_quantity")
+  isActive          Boolean  @default(true) @map("is_active")
+
+  product            Product             @relation(fields: [productId], references: [productId])
+  store              Store               @relation(fields: [storeId], references: [storeId])
+  inventory          Inventory[]
+  inventoryMovements InventoryMovement[]
+  batches            Batch[]
+  purchaseEntryItems PurchaseEntryItem[]
+  invoiceLineItems   InvoiceLineItem[]
+
+  @@unique([storeId, variantSku])
+  @@map("product_variants")
+}
+
+// 2.5 product_images
+model ProductImage {
+  imageId       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("image_id")
+  productId     String             @db.Uuid @map("product_id")
+  storeId       String             @db.Uuid @map("store_id")
+  imageUrl      String             @db.VarChar(500) @map("image_url")
+  thumbnailUrl  String?            @db.VarChar(500) @map("thumbnail_url")
+  isPrimary     Boolean            @default(false) @map("is_primary")
+  cameraAngle   CameraAngle?       @map("camera_angle")
+  lighting      LightingCondition?
+  captureDevice String?            @db.VarChar(50) @map("capture_device")
+  isLabeled     Boolean            @default(false) @map("is_labeled")
+  aiLabels      Json?              @db.JsonB @map("ai_labels")
+  capturedAt    DateTime           @default(now()) @db.Timestamptz() @map("captured_at")
+
+  product Product @relation(fields: [productId], references: [productId])
+  store   Store   @relation(fields: [storeId], references: [storeId])
+
+  @@map("product_images")
+}
+
+// =============================================================
+// GROUP 3 — INVENTORY TABLES
+// =============================================================
+
+// 3.1 inventory
+model Inventory {
+  inventoryId   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("inventory_id")
+  storeId       String    @db.Uuid @map("store_id")
+  variantId     String    @db.Uuid @map("variant_id")
+  quantity      Decimal   @default(0) @db.Decimal(15, 4)
+  reservedQty   Decimal   @default(0) @db.Decimal(15, 4) @map("reserved_qty")
+  reorderPoint  Decimal?  @db.Decimal(15, 4) @map("reorder_point")
+  lastCountedAt DateTime? @db.Timestamptz() @map("last_counted_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  store   Store          @relation(fields: [storeId], references: [storeId])
+  variant ProductVariant @relation(fields: [variantId], references: [variantId])
+
+  @@unique([storeId, variantId])
+  @@map("inventory")
+}
+
+// 3.2 inventory_movements
+model InventoryMovement {
+  movementId     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("movement_id")
+  storeId        String       @db.Uuid @map("store_id")
+  variantId      String       @db.Uuid @map("variant_id")
+  movementType   MovementType @map("movement_type")
+  quantityDelta  Decimal      @db.Decimal(15, 4) @map("quantity_delta")
+  quantityBefore Decimal      @db.Decimal(15, 4) @map("quantity_before")
+  quantityAfter  Decimal      @db.Decimal(15, 4) @map("quantity_after")
+  referenceType  String?      @db.VarChar(30) @map("reference_type")
+  referenceId    String?      @db.Uuid @map("reference_id")
+  batchId        String?      @db.Uuid @map("batch_id")
+  notes          String?
+  performedBy    String       @db.Uuid @map("performed_by")
+  deviceId       String?      @db.VarChar(100) @map("device_id")
+  syncedAt       DateTime?    @db.Timestamptz() @map("synced_at")
+  createdAt      DateTime     @default(now()) @db.Timestamptz() @map("created_at")
+
+  store           Store          @relation(fields: [storeId], references: [storeId])
+  variant         ProductVariant @relation(fields: [variantId], references: [variantId])
+  batch           Batch?         @relation(fields: [batchId], references: [batchId])
+  performedByUser User           @relation(fields: [performedBy], references: [userId])
+
+  @@map("inventory_movements")
+}
+
+// 3.3 batches
+model Batch {
+  batchId           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("batch_id")
+  variantId         String    @db.Uuid @map("variant_id")
+  storeId           String    @db.Uuid @map("store_id")
+  batchNumber       String    @db.VarChar(100) @map("batch_number")
+  quantity          Decimal   @db.Decimal(15, 4)
+  remainingQty      Decimal   @db.Decimal(15, 4) @map("remaining_qty")
+  manufacturingDate DateTime? @db.Date @map("manufacturing_date")
+  expiryDate        DateTime? @db.Date @map("expiry_date")
+  purchasePrice     Decimal   @db.Decimal(15, 4) @map("purchase_price")
+  isExpired         Boolean   @default(false) @map("is_expired")
+  createdAt         DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+
+  variant            ProductVariant      @relation(fields: [variantId], references: [variantId])
+  store              Store               @relation(fields: [storeId], references: [storeId])
+  inventoryMovements InventoryMovement[]
+  purchaseEntryItems PurchaseEntryItem[]
+  invoiceLineItems   InvoiceLineItem[]
+
+  @@unique([storeId, variantId, batchNumber])
+  @@map("batches")
+}
+
+// 3.4 purchase_entries
+model PurchaseEntry {
+  purchaseId      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("purchase_id")
+  storeId         String   @db.Uuid @map("store_id")
+  brandId         String?  @db.Uuid @map("brand_id")
+  invoiceNumber   String?  @db.VarChar(100) @map("invoice_number")
+  purchaseDate    DateTime @db.Date @map("purchase_date")
+  currencyCode    String   @db.Char(3) @map("currency_code")
+  exchangeRate    Decimal  @default(1) @db.Decimal(15, 6) @map("exchange_rate")
+  totalAmount     Decimal  @db.Decimal(15, 4) @map("total_amount")
+  totalAmountBase Decimal  @db.Decimal(15, 4) @map("total_amount_base")
+  notes           String?
+  createdBy       String   @db.Uuid @map("created_by")
+  createdAt       DateTime @default(now()) @db.Timestamptz() @map("created_at")
+
+  store         Store               @relation(fields: [storeId], references: [storeId])
+  brand         Brand?              @relation(fields: [brandId], references: [brandId])
+  currency      Currency            @relation(fields: [currencyCode], references: [currencyCode])
+  createdByUser User                @relation(fields: [createdBy], references: [userId])
+  items         PurchaseEntryItem[]
+
+  @@map("purchase_entries")
+}
+
+// 3.5 purchase_entry_items
+model PurchaseEntryItem {
+  itemId     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("item_id")
+  purchaseId String  @db.Uuid @map("purchase_id")
+  variantId  String  @db.Uuid @map("variant_id")
+  batchId    String? @db.Uuid @map("batch_id")
+  quantity   Decimal @db.Decimal(15, 4)
+  unitCost   Decimal @db.Decimal(15, 4) @map("unit_cost")
+  totalCost  Decimal @db.Decimal(15, 4) @map("total_cost")
+
+  purchaseEntry PurchaseEntry  @relation(fields: [purchaseId], references: [purchaseId])
+  variant       ProductVariant @relation(fields: [variantId], references: [variantId])
+  batch         Batch?         @relation(fields: [batchId], references: [batchId])
+
+  @@map("purchase_entry_items")
+}
+
+// =============================================================
+// GROUP 5 — CUSTOMER TABLES
+// (defined before invoices as invoices reference customers)
+// =============================================================
+
+// 5.1 customers
+model Customer {
+  customerId         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("customer_id")
+  storeId            String   @db.Uuid @map("store_id")
+  name               String   @db.VarChar(200)
+  phone              String?  @db.VarChar(20)
+  email              String?  @db.VarChar(255)
+  address            Json?    @db.JsonB
+  creditLimit        Decimal  @default(0) @db.Decimal(15, 4) @map("credit_limit")
+  outstandingBalance Decimal  @default(0) @db.Decimal(15, 4) @map("outstanding_balance")
+  totalPurchases     Decimal  @default(0) @db.Decimal(15, 4) @map("total_purchases")
+  loyaltyPoints      Int      @default(0) @map("loyalty_points")
+  notes              String?
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  store        Store                  @relation(fields: [storeId], references: [storeId])
+  invoices     Invoice[]
+  creditLedger CustomerCreditLedger[]
+
+  @@map("customers")
+}
+
+// =============================================================
+// GROUP 4 — BILLING & PAYMENT TABLES
+// =============================================================
+
+// 4.1 invoices
+model Invoice {
+  invoiceId      String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("invoice_id")
+  storeId        String         @db.Uuid @map("store_id")
+  customerId     String?        @db.Uuid @map("customer_id")
+  invoiceNumber  String         @db.VarChar(50) @map("invoice_number")
+  invoiceDate    DateTime       @db.Date @map("invoice_date")
+  currencyCode   String         @db.Char(3) @map("currency_code")
+  exchangeRate   Decimal        @default(1) @db.Decimal(15, 6) @map("exchange_rate")
+  subtotal       Decimal        @db.Decimal(15, 4)
+  taxTotal       Decimal        @default(0) @db.Decimal(15, 4) @map("tax_total")
+  discountTotal  Decimal        @default(0) @db.Decimal(15, 4) @map("discount_total")
+  roundOff       Decimal        @default(0) @db.Decimal(6, 4) @map("round_off")
+  grandTotal     Decimal        @db.Decimal(15, 4) @map("grand_total")
+  grandTotalBase Decimal        @db.Decimal(15, 4) @map("grand_total_base")
+  paidAmount     Decimal        @default(0) @db.Decimal(15, 4) @map("paid_amount")
+  creditAmount   Decimal        @default(0) @db.Decimal(15, 4) @map("credit_amount")
+  status         InvoiceStatus  @default(DRAFT)
+  paymentMode    PaymentMethod? @map("payment_mode")
+  notes          String?
+  billedBy       String         @db.Uuid @map("billed_by")
+  deviceId       String?        @db.VarChar(100) @map("device_id")
+  localId        String?        @db.VarChar(100) @map("local_id")
+  syncedAt       DateTime?      @db.Timestamptz() @map("synced_at")
+  createdAt      DateTime       @default(now()) @db.Timestamptz() @map("created_at")
+
+  store        Store             @relation(fields: [storeId], references: [storeId])
+  customer     Customer?         @relation(fields: [customerId], references: [customerId])
+  currency     Currency          @relation(fields: [currencyCode], references: [currencyCode])
+  billedByUser User              @relation(fields: [billedBy], references: [userId])
+  lineItems    InvoiceLineItem[]
+  payments     Payment[]
+
+  @@unique([storeId, invoiceNumber])
+  @@map("invoices")
+}
+
+// 4.2 invoice_line_items
+model InvoiceLineItem {
+  lineItemId     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("line_item_id")
+  invoiceId      String   @db.Uuid @map("invoice_id")
+  variantId      String   @db.Uuid @map("variant_id")
+  batchId        String?  @db.Uuid @map("batch_id")
+  productName    String   @db.VarChar(300) @map("product_name")
+  variantAttrs   Json?    @db.JsonB @map("variant_attrs")
+  hsnCode        String?  @db.VarChar(20) @map("hsn_code")
+  quantity       Decimal  @db.Decimal(15, 4)
+  unitPrice      Decimal  @db.Decimal(15, 4) @map("unit_price")
+  discountPct    Decimal  @default(0) @db.Decimal(6, 4) @map("discount_pct")
+  discountAmount Decimal  @default(0) @db.Decimal(15, 4) @map("discount_amount")
+  taxableAmount  Decimal  @db.Decimal(15, 4) @map("taxable_amount")
+  taxRuleId      String?  @db.Uuid @map("tax_rule_id")
+  taxBreakdown   Json     @default("{}") @db.JsonB @map("tax_breakdown")
+  taxAmount      Decimal  @default(0) @db.Decimal(15, 4) @map("tax_amount")
+  lineTotal      Decimal  @db.Decimal(15, 4) @map("line_total")
+
+  invoice  Invoice        @relation(fields: [invoiceId], references: [invoiceId])
+  variant  ProductVariant @relation(fields: [variantId], references: [variantId])
+  batch    Batch?         @relation(fields: [batchId], references: [batchId])
+  taxRule  TaxRule?       @relation(fields: [taxRuleId], references: [taxRuleId])
+
+  @@map("invoice_line_items")
+}
+
+// 4.3 payments
+model Payment {
+  paymentId     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("payment_id")
+  invoiceId     String        @db.Uuid @map("invoice_id")
+  storeId       String        @db.Uuid @map("store_id")
+  paymentMethod PaymentMethod @map("payment_method")
+  amount        Decimal       @db.Decimal(15, 4)
+  currencyCode  String        @db.Char(3) @map("currency_code")
+  referenceNo   String?       @db.VarChar(100) @map("reference_no")
+  paymentDate   DateTime      @default(now()) @db.Timestamptz() @map("payment_date")
+  recordedBy    String        @db.Uuid @map("recorded_by")
+  syncedAt      DateTime?     @db.Timestamptz() @map("synced_at")
+
+  invoice        Invoice  @relation(fields: [invoiceId], references: [invoiceId])
+  store          Store    @relation(fields: [storeId], references: [storeId])
+  currency       Currency @relation(fields: [currencyCode], references: [currencyCode])
+  recordedByUser User     @relation(fields: [recordedBy], references: [userId])
+
+  @@map("payments")
+}
+
+// 5.2 customer_credit_ledger
+model CustomerCreditLedger {
+  ledgerId      String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("ledger_id")
+  customerId    String          @db.Uuid @map("customer_id")
+  storeId       String          @db.Uuid @map("store_id")
+  entryType     CreditEntryType @map("entry_type")
+  amount        Decimal         @db.Decimal(15, 4)
+  balanceAfter  Decimal         @db.Decimal(15, 4) @map("balance_after")
+  referenceType String?         @db.VarChar(20) @map("reference_type")
+  referenceId   String?         @db.Uuid @map("reference_id")
+  notes         String?
+  recordedBy    String          @db.Uuid @map("recorded_by")
+  createdAt     DateTime        @default(now()) @db.Timestamptz() @map("created_at")
+
+  customer       Customer @relation(fields: [customerId], references: [customerId])
+  store          Store    @relation(fields: [storeId], references: [storeId])
+  recordedByUser User     @relation(fields: [recordedBy], references: [userId])
+
+  @@map("customer_credit_ledger")
+}
+
+// =============================================================
+// GROUP 7 — SYSTEM & AI PIPELINE TABLES
+// =============================================================
+
+// 7.1 event_logs
+model EventLog {
+  eventId    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("event_id")
+  storeId    String                @db.Uuid @map("store_id")
+  userId     String?               @db.Uuid @map("user_id")
+  eventType  String                @db.VarChar(60) @map("event_type")
+  entityType String?               @db.VarChar(40) @map("entity_type")
+  entityId   String?               @db.Uuid @map("entity_id")
+  payload    Json                  @default("{}") @db.JsonB
+  deviceId   String?               @db.VarChar(100) @map("device_id")
+  ipAddress  Unsupported("inet")?  @map("ip_address")
+  createdAt  DateTime              @default(now()) @db.Timestamptz() @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [storeId])
+  user  User? @relation(fields: [userId], references: [userId])
+
+  @@map("event_logs")
+}
+
+// 7.2 sync_queue
+model SyncQueue {
+  syncId        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("sync_id")
+  deviceId      String         @db.VarChar(100) @map("device_id")
+  storeId       String         @db.Uuid @map("store_id")
+  entityType    SyncEntityType @map("entity_type")
+  entityId      String         @db.Uuid @map("entity_id")
+  operation     SyncOperation
+  payload       Json           @db.JsonB
+  localSequence BigInt         @map("local_sequence")
+  status        SyncStatus     @default(PENDING)
+  conflictData  Json?          @db.JsonB @map("conflict_data")
+  retryCount    Int            @default(0) @map("retry_count")
+  createdAt     DateTime       @default(now()) @db.Timestamptz() @map("created_at")
+  syncedAt      DateTime?      @db.Timestamptz() @map("synced_at")
+
+  store Store @relation(fields: [storeId], references: [storeId])
+
+  @@map("sync_queue")
+}
+
+// 7.3 device_registry
+model DeviceRegistry {
+  deviceId   String       @id @db.VarChar(100) @map("device_id")
+  storeId    String       @db.Uuid @map("store_id")
+  userId     String?      @db.Uuid @map("user_id")
+  deviceName String?      @db.VarChar(100) @map("device_name")
+  platform   PlatformType
+  appVersion String?      @db.VarChar(20) @map("app_version")
+  lastSyncAt DateTime?    @db.Timestamptz() @map("last_sync_at")
+  lastSeenAt DateTime?    @db.Timestamptz() @map("last_seen_at")
+  isActive   Boolean      @default(true) @map("is_active")
+
+  store Store @relation(fields: [storeId], references: [storeId])
+  user  User? @relation(fields: [userId], references: [userId])
+
+  @@map("device_registry")
+}
+
+// 7.4 audit_logs
+model AuditLog {
+  auditId   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("audit_id")
+  storeId   String   @db.Uuid @map("store_id")
+  userId    String?  @db.Uuid @map("user_id")
+  tableName String   @db.VarChar(60) @map("table_name")
+  recordId  String   @db.Uuid @map("record_id")
+  operation String   @db.VarChar(10)
+  oldValues Json?    @db.JsonB @map("old_values")
+  newValues Json?    @db.JsonB @map("new_values")
+  createdAt DateTime @default(now()) @db.Timestamptz() @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [storeId])
+  user  User? @relation(fields: [userId], references: [userId])
+
+  @@map("audit_logs")
+}
+
+// =============================================================
+// GROUP 8 — MASTER DATA TABLES
+// =============================================================
+
+model AppConfig {
+  key       String   @id @db.VarChar(100)
+  value     String   @db.Text
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  @@map("app_config")
+}
+
+model MasterIndustryConfig {
+  industryType          String  @id @db.VarChar(50) @map("industry_type")
+  displayName           String  @db.VarChar(100) @map("display_name")
+  batchTrackingRequired Boolean @default(false) @map("batch_tracking_required")
+  requiresBatchExpiry   Boolean @default(false) @map("requires_batch_expiry")
+  defaultPricingType    String  @db.VarChar(30) @map("default_pricing_type")
+  allowedPricingTypes   Json    @map("allowed_pricing_types")
+  defaultUnit           String  @db.VarChar(20) @map("default_unit")
+  allowedUnits          Json    @map("allowed_units")
+  variantAttributes     Json    @map("variant_attributes")
+  specialFields         Json    @map("special_fields")
+  dataVersion           Int     @default(1) @map("data_version")
+
+  @@map("master_industry_config")
+}
+
+model MasterCategory {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  industryType String  @db.VarChar(50) @map("industry_type")
+  name         String  @db.VarChar(150)
+  parentId     String? @db.Uuid @map("parent_id")
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  parent   MasterCategory?  @relation("MasterCatParent", fields: [parentId], references: [id])
+  children MasterCategory[] @relation("MasterCatParent")
+
+  @@unique([industryType, name, parentId], name: "uq_master_category")
+  @@index([industryType])
+  @@map("master_categories")
+}
+
+model MasterBrand {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String  @unique @db.VarChar(150)
+  industries Json
+  isPopular  Boolean @default(true) @map("is_popular")
+  isActive   Boolean @default(true) @map("is_active")
+
+  @@map("master_brands")
+}
+
+// =============================================================
+// GROUP 9 — PLATFORM ADMIN TABLES
+// =============================================================
+
+model PlatformUser {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  name         String   @db.VarChar(150)
+  passwordHash String   @db.VarChar(255) @map("password_hash")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  userRoles       PlatformUserRole[]
+  assignedTickets SupportTicket[]
+
+  @@map("platform_users")
+}
+
+model PlatformRole {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  permissions Json     @default("{}") @db.JsonB
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @db.Timestamptz() @map("created_at")
+
+  userRoles PlatformUserRole[]
+
+  @@map("platform_roles")
+}
+
+model PlatformUserRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  roleId    String   @db.Uuid @map("role_id")
+  grantedAt DateTime @default(now()) @db.Timestamptz() @map("granted_at")
+
+  user PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role PlatformRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("platform_user_roles")
+}
+
+// ── Platform Plans ─────────────────────────────────────────────────
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+
+  @@map("billing_cycle")
+}
+
+model Plan {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String       @unique @db.VarChar(100)
+  displayName      String       @db.VarChar(150) @map("display_name")
+  price            Decimal      @default(0) @db.Decimal(10, 2)
+  billingCycle     BillingCycle @default(MONTHLY) @map("billing_cycle")
+  maxStores        Int          @default(1) @map("max_stores")
+  maxUsersPerStore Int          @default(5) @map("max_users_per_store")
+  features         Json         @default("[]") @db.JsonB
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt        DateTime     @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  @@map("plans")
+}
+
+model PlanFeature {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique @db.VarChar(100)
+  label       String   @db.VarChar(200)
+  description String?  @db.Text
+  category    String   @default("core") @db.VarChar(50)
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+
+  @@map("plan_features")
+}
+
+// =============================================================
+// GROUP 10 — SUPPORT TICKETING
+// =============================================================
+
+enum TicketCategory {
+  BILLING
+  TECHNICAL
+  ACCOUNT
+  GENERAL
+
+  @@map("ticket_category")
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("ticket_priority")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+
+  @@map("ticket_status")
+}
+
+enum AuthorType {
+  STORE_USER
+  PLATFORM_ADMIN
+
+  @@map("author_type")
+}
+
+model SupportTicket {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String         @db.Uuid @map("org_id")
+  storeId     String?        @db.Uuid @map("store_id")
+  userId      String         @db.Uuid @map("user_id")
+  title       String         @db.VarChar(200)
+  description String         @db.Text
+  category    TicketCategory @default(GENERAL)
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+  assignedTo  String?        @db.Uuid @map("assigned_to")
+  createdAt   DateTime       @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt   DateTime       @default(now()) @updatedAt @db.Timestamptz() @map("updated_at")
+
+  organization  Organization  @relation(fields: [orgId],    references: [orgId])
+  store         Store?        @relation(fields: [storeId],  references: [storeId])
+  raisedBy      User          @relation(fields: [userId],   references: [userId])
+  assignedAdmin PlatformUser? @relation(fields: [assignedTo], references: [id])
+  replies       TicketReply[]
+
+  @@index([orgId])
+  @@index([status])
+  @@index([userId])
+  @@map("support_tickets")
+}
+
+model TicketReply {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId   String     @db.Uuid @map("ticket_id")
+  authorType AuthorType @map("author_type")
+  authorId   String     @db.Uuid @map("author_id")
+  message    String     @db.Text
+  createdAt  DateTime   @default(now()) @db.Timestamptz() @map("created_at")
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_replies")
+}

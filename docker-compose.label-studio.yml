@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────
+# Label Studio — image annotation for BillFlow YOLOv8 training
+# ─────────────────────────────────────────────────────────────
+#
+# SETUP:
+#   docker compose -f docker-compose.label-studio.yml up -d
+#   Open http://localhost:8080
+#   Create account (local, no sign-up required in self-hosted mode)
+#
+# IMPORT IMAGES:
+#   1. Create a new project → "Object Detection with Bounding Boxes"
+#   2. Settings → Cloud Storage → Add Source Storage
+#      Type: Local files
+#      Path: /label-studio/files/training   (mapped below)
+#      Toggle: "Treat every bucket object as a separate task" ON
+#   3. Sync Storage → images appear as tasks
+#
+# LABELING TEMPLATE (paste in Settings → Labeling Interface → Code):
+#   <View>
+#     <Image name="image" value="$image"/>
+#     <RectangleLabels name="label" toName="image">
+#       <Label value="product" background="#FF6B6B"/>
+#       <Label value="barcode" background="#4ECDC4"/>
+#       <Label value="price_tag" background="#45B7D1"/>
+#       <Label value="expiry_date" background="#96CEB4"/>
+#     </RectangleLabels>
+#   </View>
+#
+# EXPORT TO YOLO FORMAT:
+#   Export → YOLO format → downloads zip with:
+#     images/ labels/ classes.txt
+#   Extract into backend/datasets/billflow/labels/{train,val,test}/
+#
+# ─────────────────────────────────────────────────────────────
+
+version: "3.8"
+
+services:
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    container_name: label-studio
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistent Label Studio data (projects, annotations, users)
+      - ./label-studio-data:/label-studio/data
+      # Mount training images so Label Studio can serve them locally
+      - ./backend/uploads/training:/label-studio/files/training:ro
+    environment:
+      - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
+      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/files
+      # Set a fixed secret key so sessions survive restarts
+      - SECRET_KEY=billflow-label-studio-secret-change-in-prod
+      # Disable analytics to avoid external calls
+      - COLLECT_ANALYTICS=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ─────────────────────────────────────────────────────────────
+# WORKFLOW SUMMARY:
+#
+#  1. Run scrapers to fill backend/uploads/training/
+#     npx ts-node scripts/scrapers/open-food-facts-scraper.ts --pages=10
+#     python scripts/scrapers/google-images-scraper.py --all --count=50
+#
+#  2. Start Label Studio:
+#     docker compose -f docker-compose.label-studio.yml up -d
+#
+#  3. Annotate images with bounding boxes at http://localhost:8080
+#
+#  4. Export YOLO labels, run prepare-dataset.ts to build final dataset
+#
+#  5. Train on RTX 4050 with train_yolov8.ipynb
+# ─────────────────────────────────────────────────────────────

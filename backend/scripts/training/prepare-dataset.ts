@@ -1,0 +1,327 @@
+/**
+ * Prepare BillFlow YOLO dataset from downloaded training images + Label Studio labels.
+ * Splits into train/val/test (70/20/10) and generates billflow.yaml.
+ *
+ * Usage:
+ *   # Images only (no labels yet):
+ *   npx ts-node scripts/training/prepare-dataset.ts
+ *
+ *   # Images + Label Studio exported labels:
+ *   npx ts-node scripts/training/prepare-dataset.ts \
+ *     --images-dir=uploads/training \
+ *     --labels-dir=exports/labels
+ */
+
+import fs   from 'node:fs/promises';
+import path from 'node:path';
+
+// ── CLI args ───────────────────────────────────────────────────
+
+function getArg(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  const arg = process.argv.find(a => a.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : undefined;
+}
+
+const UPLOAD_DIR  = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'uploads');
+const IMAGES_DIR  = path.resolve(getArg('images-dir') ?? path.join(UPLOAD_DIR, 'training'));
+const LABELS_DIR  = getArg('labels-dir') ? path.resolve(getArg('labels-dir')!) : null;
+const DATASET_DIR = path.join(process.cwd(), 'datasets', 'billflow');
+const TRAIN_RATIO = 0.70;
+const VAL_RATIO   = 0.20;
+// TEST_RATIO = 0.10
+
+// Fallback classes if classes.txt not found
+const DEFAULT_CLASSES = [
+  'grocery_product', 'packaged_food', 'beverage', 'snack',
+  'gold_jewelry', 'silver_jewelry', 'diamond_jewelry',
+  'hand_tool', 'power_tool', 'pipe_fitting',
+  'led_bulb', 'electrical_switch', 'circuit_breaker', 'ceiling_fan',
+  'kurta', 'saree', 'jeans', 'tshirt', 'apparel',
+  'shoes', 'sandals', 'sports_shoes',
+  'smartphone', 'laptop', 'earbuds', 'smartwatch', 'electronics',
+  'bread', 'cake', 'biscuit_pack', 'namkeen',
+  'toy_car', 'doll', 'puzzle', 'building_blocks', 'toys',
+  'barcode', 'price_tag', 'expiry_date', 'product_label',
+  'stationery', 'bags', 'furniture',
+];
+
+const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp']);
+
+// ── Helpers ────────────────────────────────────────────────────
+
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+async function collectImages(root: string): Promise<string[]> {
+  const images: string[] = [];
+  let entries: string[];
+  try {
+    entries = await fs.readdir(root);
+  } catch {
+    console.error(`Images dir not found: ${root}`);
+    console.error('Run scrapers first or set --images-dir=<path>');
+    process.exit(1);
+  }
+
+  async function walk(dir: string) {
+    const items = await fs.readdir(dir);
+    for (const item of items) {
+      const full = path.join(dir, item);
+      const stat = await fs.stat(full);
+      if (stat.isDirectory()) {
+        await walk(full);
+      } else if (IMAGE_EXTS.has(path.extname(item).toLowerCase())) {
+        images.push(full);
+      }
+    }
+  }
+
+  await walk(root);
+  return images;
+}
+
+/** Collect all .txt label files from a flat or nested labels dir. */
+async function collectLabels(labelsDir: string): Promise<Map<string, string>> {
+  // stem → full path
+  const map = new Map<string, string>();
+
+  async function walk(dir: string) {
+    const items = await fs.readdir(dir);
+    for (const item of items) {
+      const full = path.join(dir, item);
+      const stat = await fs.stat(full);
+      if (stat.isDirectory()) {
+        await walk(full);
+      } else if (path.extname(item).toLowerCase() === '.txt' &&
+                 item !== 'classes.txt') {
+        const stem = path.basename(item, '.txt');
+        map.set(stem, full);
+      }
+    }
+  }
+
+  await walk(labelsDir);
+  return map;
+}
+
+async function readClasses(imagesDir: string): Promise<string[]> {
+  // Look for classes.txt written by auto_label.py
+  const candidates = [
+    path.join(imagesDir, 'classes.txt'),
+    path.join(path.dirname(imagesDir), 'classes.txt'),
+    LABELS_DIR ? path.join(LABELS_DIR, 'classes.txt') : '',
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    try {
+      const raw = await fs.readFile(p, 'utf-8');
+      const classes = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      if (classes.length > 0) {
+        console.log(`Classes: read ${classes.length} from ${p}`);
+        return classes;
+      }
+    } catch {}
+  }
+
+  console.log(`Classes: classes.txt not found — using ${DEFAULT_CLASSES.length} defaults`);
+  return DEFAULT_CLASSES;
+}
+
+async function ensureDirs(): Promise<void> {
+  for (const split of ['train', 'val', 'test']) {
+    await fs.mkdir(path.join(DATASET_DIR, 'images', split), { recursive: true });
+    await fs.mkdir(path.join(DATASET_DIR, 'labels', split), { recursive: true });
+  }
+}
+
+async function safeCopy(src: string, dest: string): Promise<void> {
+  try { await fs.access(dest); return; } catch {}
+  await fs.copyFile(src, dest);
+}
+
+function generateYaml(classes: string[]): string {
+  const classLines = classes.map((c, i) => `  ${i}: ${c}`).join('\n');
+  return `# BillFlow YOLOv8 Dataset Configuration
+# Generated by prepare-dataset.ts
+#
+# Label format per line: <class_id> <cx> <cy> <w> <h>  (normalized 0-1)
+
+path:   ${DATASET_DIR}
+train:  images/train
+val:    images/val
+test:   images/test
+
+nc: ${classes.length}
+
+names:
+${classLines}
+`;
+}
+
+// ── Main ───────────────────────────────────────────────────────
+
+async function main() {
+  console.log('BillFlow dataset preparation\n');
+  console.log(`Images dir:  ${IMAGES_DIR}`);
+  console.log(`Labels dir:  ${LABELS_DIR ?? '(none — images only)'}`);
+  console.log(`Output:      ${DATASET_DIR}\n`);
+
+  // 1. Read classes
+  const classes = await readClasses(IMAGES_DIR);
+
+  // 2. Collect images
+  process.stdout.write('Scanning images...');
+  const allImages = await collectImages(IMAGES_DIR);
+  // Filter out label .txt files that got swept up
+  const imageFiles = allImages.filter(p => IMAGE_EXTS.has(path.extname(p).toLowerCase()));
+  console.log(` ${imageFiles.length} found`);
+
+  if (imageFiles.length === 0) {
+    console.error('No images found.');
+    process.exit(1);
+  }
+
+  // 3. Collect labels (if provided)
+  let labelMap = new Map<string, string>(); // stem → label path
+  if (LABELS_DIR) {
+    process.stdout.write('Scanning labels...');
+    try {
+      labelMap = await collectLabels(LABELS_DIR);
+      console.log(` ${labelMap.size} .txt files found`);
+    } catch {
+      console.log(' (labels dir not accessible — continuing images-only)');
+    }
+  }
+
+  // 4. Build stem → image path map for matching
+  // Key = filename without extension (original name, before any hash prefix)
+  const stemToImage = new Map<string, string>();
+  for (const imgPath of imageFiles) {
+    const base = path.basename(imgPath);
+    const ext  = path.extname(base);
+    const stem = base.slice(0, -ext.length);
+    stemToImage.set(stem, imgPath);
+    // Also index without hash prefix (e.g. "abc12345_000001" → "000001")
+    const underscoreIdx = stem.indexOf('_');
+    if (underscoreIdx > 0 && underscoreIdx <= 8) {
+      const shortStem = stem.slice(underscoreIdx + 1);
+      if (!stemToImage.has(shortStem)) stemToImage.set(shortStem, imgPath);
+    }
+  }
+
+  // 5. Match labels → images
+  type ImageEntry = { imgPath: string; labelPath: string | null };
+  const matched:   ImageEntry[] = [];
+  const unmatched: string[]     = []; // images with no label
+
+  if (labelMap.size > 0) {
+    // Start from labels — each label needs a paired image
+    const usedImages = new Set<string>();
+    for (const [stem, labelPath] of labelMap) {
+      const imgPath = stemToImage.get(stem);
+      if (imgPath) {
+        matched.push({ imgPath, labelPath });
+        usedImages.add(imgPath);
+      }
+      // Labels with no image: silently skip (orphaned label)
+    }
+    // Images with no label
+    for (const imgPath of imageFiles) {
+      if (!usedImages.has(imgPath)) unmatched.push(imgPath);
+    }
+  } else {
+    // No labels — treat every image as unmatched (images-only mode)
+    for (const imgPath of imageFiles) {
+      unmatched.push(imgPath);
+    }
+  }
+
+  // All entries for splitting: labeled first, then unlabeled
+  const allEntries: ImageEntry[] = [
+    ...shuffle(matched),
+    ...shuffle(unmatched).map(p => ({ imgPath: p, labelPath: null })),
+  ];
+
+  // 6. Split 70/20/10
+  const trainEnd = Math.floor(allEntries.length * TRAIN_RATIO);
+  const valEnd   = trainEnd + Math.floor(allEntries.length * VAL_RATIO);
+
+  const splits: Record<string, ImageEntry[]> = {
+    train: allEntries.slice(0, trainEnd),
+    val:   allEntries.slice(trainEnd, valEnd),
+    test:  allEntries.slice(valEnd),
+  };
+
+  console.log(`Split:   train=${splits.train.length}  val=${splits.val.length}  test=${splits.test.length}`);
+
+  // 7. Create dirs
+  await ensureDirs();
+
+  // 8. Copy images + labels to splits
+  let copiedImages = 0;
+  let copiedLabels = 0;
+
+  for (const [split, entries] of Object.entries(splits)) {
+    process.stdout.write(`Copying ${split}...`);
+    for (const { imgPath, labelPath } of entries) {
+      const base     = path.basename(imgPath);
+      const ext      = path.extname(base);
+      const stem     = base.slice(0, -ext.length);
+      // Stable unique name: 8-char base64 hash prefix
+      const hash     = Buffer.from(imgPath).toString('base64').replace(/[^a-z0-9]/gi, '').slice(0, 8);
+      const destStem = `${hash}_${stem}`;
+
+      // Copy image
+      const imgDest = path.join(DATASET_DIR, 'images', split, `${destStem}${ext}`);
+      await safeCopy(imgPath, imgDest);
+      copiedImages++;
+
+      // Copy label (if matched)
+      if (labelPath) {
+        const lblDest = path.join(DATASET_DIR, 'labels', split, `${destStem}.txt`);
+        await safeCopy(labelPath, lblDest);
+        copiedLabels++;
+      }
+    }
+    console.log(' done');
+  }
+
+  // 9. Write billflow.yaml
+  const yamlPath = path.join(DATASET_DIR, 'billflow.yaml');
+  await fs.writeFile(yamlPath, generateYaml(classes));
+
+  // 10. Summary
+  const labeledCount   = matched.length;
+  const unmatchedCount = unmatched.length;
+
+  console.log(`
+Summary
+-------
+Images found:        ${imageFiles.length}
+Labels found:        ${labelMap.size}
+Matched pairs:       ${labeledCount}
+Unmatched images:    ${unmatchedCount}  (no label — included in dataset, no .txt)
+
+Copied images:       ${copiedImages}
+Copied labels:       ${copiedLabels}
+
+Dataset:    ${DATASET_DIR}
+  images/train  ${splits.train.length}
+  images/val    ${splits.val.length}
+  images/test   ${splits.test.length}
+  billflow.yaml (${classes.length} classes)
+
+${unmatchedCount > 0 ? `TIP: ${unmatchedCount} images have no label.\n     Annotate in Label Studio, re-export, and re-run with --labels-dir=<path>.` : 'All images are labeled. Ready to train!'}
+
+Next step:
+  Open scripts/training/train_yolov8.ipynb
+`);
+}
+
+main().catch(err => { console.error(err); process.exit(1); });

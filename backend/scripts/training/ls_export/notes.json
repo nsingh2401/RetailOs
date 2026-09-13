@@ -1,0 +1,101 @@
+{
+  "categories": [
+    {
+      "id": 0,
+      "name": "apparel"
+    },
+    {
+      "id": 1,
+      "name": "bakery"
+    },
+    {
+      "id": 2,
+      "name": "beverage"
+    },
+    {
+      "id": 3,
+      "name": "electrical"
+    },
+    {
+      "id": 4,
+      "name": "electronics"
+    },
+    {
+      "id": 5,
+      "name": "footwear"
+    },
+    {
+      "id": 6,
+      "name": "grocery_product"
+    },
+    {
+      "id": 7,
+      "name": "hardware"
+    },
+    {
+      "id": 8,
+      "name": "jewelry"
+    },
+    {
+      "id": 9,
+      "name": "pharmacy"
+    },
+    {
+      "id": 10,
+      "name": "class_43"
+    },
+    {
+      "id": 11,
+      "name": "toys"
+    },
+    {
+      "id": 12,
+      "name": "furniture"
+    },
+    {
+      "id": 13,
+      "name": "bags"
+    },
+    {
+      "id": 14,
+      "name": "class_44"
+    },
+    {
+      "id": 15,
+      "name": "stationery"
+    },
+    {
+      "id": 16,
+      "name": "class_45"
+    },
+    {
+      "id": 17,
+      "name": "class_46"
+    },
+    {
+      "id": 18,
+      "name": "smartphone"
+    },
+    {
+      "id": 19,
+      "name": "hand_tool"
+    },
+    {
+      "id": 20,
+      "name": "laptop"
+    },
+    {
+      "id": 21,
+      "name": "class_47"
+    },
+    {
+      "id": 22,
+      "name": "class_48"
+    }
+  ],
+  "info": {
+    "year": 2026,
+    "version": "1.0",
+    "contributor": "Label Studio"
+  }
+}

@@ -1,0 +1,56 @@
+# ─── Repo scope: track backend/ only ──────────────────────────────
+# flutter_app/ and admin-panel/ have their own repos / are excluded below.
+
+.claude
+CLAUDE.md
+CLAUDE - Copy.md
+docs/
+
+# ─── Entire sub-projects excluded ─────────────────────────────────────────────
+flutter_app/
+admin-panel/
+
+# ─── Training Data & Models ────────────────────────────────────────────────────
+backend/uploads/
+backend/scripts/ai/moondream2_model/
+backend/scripts/ai/ollama_models/
+backend/scripts/ai/backend/
+backend/datasets/
+backend/label-studio-data/
+label-studio-data/
+*.safetensors
+*.tflite
+*.pt
+*.onnx
+
+# ─── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.env
+.env.production
+.env.local
+
+# ─── Python / AI ───────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+yolo_env/
+backend/scripts/training/yolo_env/
+*.egg-info/
+.Python
+
+# ─── Logs & Temp ───────────────────────────────────────────────────────────────
+*.log
+logs/
+backend/exports/
+tmp/
+
+# ─── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Exceptions (keep these) ───────────────────────────────────────────────────
+!backend/uploads/.gitkeep
+!backend/scripts/ai/requirements_moondream.txt
+!backend/scripts/training/train_yolov8.ipynb
