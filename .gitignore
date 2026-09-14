@@ -25,7 +25,6 @@ label-studio-data/
 
 # ─── Node.js ───────────────────────────────────────────────────────────────────
 node_modules/
-dist/
 build/
 .env
 .env.production
