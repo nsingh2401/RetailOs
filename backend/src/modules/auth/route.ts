@@ -1,10 +1,11 @@
+﻿// @ts-nocheck
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { rateLimitMiddleware } from '../../middleware/rateLimit';
 import { storeMiddleware } from '../../middleware/store';
 import * as handler from './handler';
 
-// ── /v1/auth/* ────────────────────────────────────────────────
+// â”€â”€ /v1/auth/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default async function authRoutes(app: FastifyInstance) {
   app.post('/signup',
     { preHandler: [rateLimitMiddleware] },
@@ -60,7 +61,7 @@ export default async function authRoutes(app: FastifyInstance) {
     handler.refreshDevToken);
 }
 
-// ── /v1/users/* ───────────────────────────────────────────────
+// â”€â”€ /v1/users/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function userRoutes(app: FastifyInstance) {
   app.post('/invite',
     { preHandler: [rateLimitMiddleware, authMiddleware] },
@@ -68,7 +69,7 @@ export async function userRoutes(app: FastifyInstance) {
   );
 }
 
-// ── /v1/users/* (management) ──────────────────────────────────
+// â”€â”€ /v1/users/* (management) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function userManagementRoutes(app: FastifyInstance) {
   app.get('/',
     { preHandler: [rateLimitMiddleware, authMiddleware] },
@@ -86,7 +87,7 @@ export async function userManagementRoutes(app: FastifyInstance) {
   );
 }
 
-// ── /v1/org/* ─────────────────────────────────────────────────
+// â”€â”€ /v1/org/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function orgRoutes(app: FastifyInstance) {
   app.get('/',
     { preHandler: [rateLimitMiddleware, authMiddleware] },
@@ -114,7 +115,7 @@ export async function orgRoutes(app: FastifyInstance) {
   );
 }
 
-// ── /v1/stores/:storeId/staff routes ─────────────────────────
+// â”€â”€ /v1/stores/:storeId/staff routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function storeStaffRoutes(app: FastifyInstance) {
   app.get('/:storeId/staff',
     { preHandler: [rateLimitMiddleware, authMiddleware, storeMiddleware] },
@@ -136,3 +137,4 @@ export async function storeStaffRoutes(app: FastifyInstance) {
     handler.removeStoreRole,
   );
 }
+

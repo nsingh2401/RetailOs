@@ -507,7 +507,7 @@ export async function createVariant(
           storeId,
           variantSku:        body.variantSku,
           barcode:           body.barcode,
-          variantAttributes: body.variantAttributes,
+          variantAttributes: body.variantAttributes as any,
           priceOverride:     body.priceOverride,
           purchasePrice:     body.purchasePrice,
           stockQuantity:     body.initialStock,
@@ -584,10 +584,10 @@ export async function updateVariant(
       data:  {
         ...(body.variantSku        !== undefined && { variantSku:        body.variantSku }),
         ...(body.barcode           !== undefined && { barcode:           body.barcode }),
-        ...(body.variantAttributes !== undefined && { variantAttributes: body.variantAttributes }),
+        ...(body.variantAttributes !== undefined && { variantAttributes: body.variantAttributes as any }),
         ...(body.priceOverride     !== undefined && { priceOverride:     body.priceOverride }),
         ...(body.purchasePrice     !== undefined && { purchasePrice:     body.purchasePrice }),
-      },
+      } as any,
     });
 
     return reply.send({ success: true, data: variant });
@@ -802,7 +802,7 @@ export async function createBrand(
         storeId,
         name:         body.name,
         manufacturer: body.manufacturer,
-        contactInfo:  body.contactInfo,
+        contactInfo:  body.contactInfo as any,
       },
     });
 

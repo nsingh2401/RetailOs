@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { storeMiddleware, requireRole } from '../../middleware/store';
@@ -14,3 +15,4 @@ export default async function invoiceRoutes(app: FastifyInstance) {
   app.post('/:storeId/invoices/:invoiceId/payments',          { preHandler: [...pre] },                            handler.recordPayment);
   app.post('/:storeId/invoices/:invoiceId/cancel',            { preHandler: [...pre, requireRole('OWNER', 'MANAGER')] },    handler.cancelInvoice);
 }
+

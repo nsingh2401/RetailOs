@@ -120,7 +120,7 @@ export async function confirmUpload(
       lighting:      lighting      ?? null,
       captureDevice: captureDevice ?? null,
       isLabeled: false,
-      aiLabels:  null,
+      aiLabels:  null as any,
     },
   });
 

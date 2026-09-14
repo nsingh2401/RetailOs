@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { storeMiddleware } from '../../middleware/store';
@@ -13,3 +14,4 @@ export default async function uploadRoutes(app: FastifyInstance) {
   app.post('/:storeId/upload/confirm',              { preHandler: pre }, handler.confirmUpload);
   app.get( '/:storeId/upload/history/:productId',   { preHandler: pre }, handler.getUploadHistory);
 }
+

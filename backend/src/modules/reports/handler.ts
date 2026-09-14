@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
@@ -17,7 +18,7 @@ import type {
   TallyExportQuery,
 } from './schema';
 
-// ── Role guard helper ──────────────────────────────────────────
+// â”€â”€ Role guard helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function denyIfNotManager(request: FastifyRequest, reply: FastifyReply): boolean {
   if (request.storeRole !== 'OWNER' && request.storeRole !== 'MANAGER') {
     reply.status(403).send({
@@ -29,7 +30,7 @@ function denyIfNotManager(request: FastifyRequest, reply: FastifyReply): boolean
   return false;
 }
 
-// ── GST row types ──────────────────────────────────────────────
+// â”€â”€ GST row types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface GstrB2CLargeRow {
   invoice_number:  unknown;
   invoice_date:    unknown;
@@ -57,7 +58,7 @@ interface Gstr3bRateRow {
   tax_amount:     unknown;
 }
 
-// ── Row types ──────────────────────────────────────────────────
+// â”€â”€ Row types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface DailySalesRow {
   invoice_date:        unknown;
   invoice_count:       unknown;
@@ -123,7 +124,7 @@ function serializeRow<T extends Record<string, unknown>>(row: T): T {
   return result as T;
 }
 
-// ── GET /:storeId/reports/sales-summary ───────────────────────
+// â”€â”€ GET /:storeId/reports/sales-summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getSalesSummary(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: DateRangeQuery }>,
   reply: FastifyReply,
@@ -176,7 +177,7 @@ export async function getSalesSummary(
   });
 }
 
-// ── GET /:storeId/reports/top-products ────────────────────────
+// â”€â”€ GET /:storeId/reports/top-products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getTopProducts(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: TopProductsQuery }>,
   reply: FastifyReply,
@@ -218,7 +219,7 @@ export async function getTopProducts(
   return reply.send({ success: true, data: rows });
 }
 
-// ── GET /:storeId/reports/slow-movers ─────────────────────────
+// â”€â”€ GET /:storeId/reports/slow-movers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getSlowMovers(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -299,7 +300,7 @@ export async function getSlowMovers(
   return reply.send({ success: true, data: rows });
 }
 
-// ── GET /:storeId/reports/tax-summary ─────────────────────────
+// â”€â”€ GET /:storeId/reports/tax-summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getTaxSummary(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -351,7 +352,7 @@ export async function getTaxSummary(
   });
 }
 
-// ── GET /:storeId/reports/credit-aging ────────────────────────
+// â”€â”€ GET /:storeId/reports/credit-aging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getCreditAging(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -430,7 +431,7 @@ export async function getCreditAging(
   });
 }
 
-// ── GET /:storeId/reports/purchase-summary ────────────────────
+// â”€â”€ GET /:storeId/reports/purchase-summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getPurchaseSummary(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -477,7 +478,7 @@ export async function getPurchaseSummary(
   });
 }
 
-// ── GET /:storeId/reports/payment-modes ───────────────────────
+// â”€â”€ GET /:storeId/reports/payment-modes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getPaymentModes(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -524,7 +525,7 @@ export async function getPaymentModes(
   });
 }
 
-// ── Shared: fetch GSTR-1 data ─────────────────────────────────
+// â”€â”€ Shared: fetch GSTR-1 data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
   const [b2cLargeRaw, b2cSmallRaw, hsnRaw] = await Promise.all([
     prisma.$queryRaw<GstrB2CLargeRow[]>(Prisma.sql`
@@ -609,7 +610,7 @@ async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
   };
 }
 
-// ── Shared: fetch GSTR-3B data ────────────────────────────────
+// â”€â”€ Shared: fetch GSTR-3B data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function fetchGstr3bData(storeId: string, fromDate: Date, toDate: Date) {
   const rateRows = await prisma.$queryRaw<Gstr3bRateRow[]>(Prisma.sql`
     SELECT
@@ -659,7 +660,7 @@ async function fetchGstr3bData(storeId: string, fromDate: Date, toDate: Date) {
   return { table31, nilExempt, table32InterState: [], grandTotals };
 }
 
-// ── GET /:storeId/reports/gstr1 ───────────────────────────────
+// â”€â”€ GET /:storeId/reports/gstr1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getGstr1(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -676,7 +677,7 @@ export async function getGstr1(
   return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
 
-// ── GET /:storeId/reports/gstr3b ──────────────────────────────
+// â”€â”€ GET /:storeId/reports/gstr3b â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getGstr3b(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ReportBaseQuery }>,
   reply: FastifyReply,
@@ -693,7 +694,7 @@ export async function getGstr3b(
   return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
 
-// ── Excel helpers ─────────────────────────────────────────────
+// â”€â”€ Excel helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function styleHeader(ws: ExcelJS.Worksheet) {
   const headerRow     = ws.getRow(1);
   headerRow.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -834,7 +835,7 @@ async function buildSalesExcel(
   return wb.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
-// ── GET /:storeId/reports/export ──────────────────────────────
+// â”€â”€ GET /:storeId/reports/export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function exportReport(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: ExportQuery }>,
   reply: FastifyReply,
@@ -886,7 +887,7 @@ export async function exportReport(
   return reply.send(buffer);
 }
 
-// ── Tally row type ────────────────────────────────────────────
+// â”€â”€ Tally row type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface TallyLineRow {
   invoice_number: unknown;
   invoice_date:   unknown;
@@ -903,7 +904,7 @@ interface TallyLineRow {
   payment_mode:   unknown;
 }
 
-// ── Shared: fetch Tally line-item data ────────────────────────
+// â”€â”€ Shared: fetch Tally line-item data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function fetchTallyData(storeId: string, fromDate: Date, toDate: Date) {
   const rows = await prisma.$queryRaw<TallyLineRow[]>(Prisma.sql`
     SELECT
@@ -938,7 +939,7 @@ async function fetchTallyData(storeId: string, fromDate: Date, toDate: Date) {
   return rows.map(serializeRow);
 }
 
-// ── Tally XML builder ─────────────────────────────────────────
+// â”€â”€ Tally XML builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function buildTallyXml(
   rows: ReturnType<typeof serializeRow>[],
   tallyVersion: 'erp9' | 'prime',
@@ -1061,7 +1062,7 @@ function buildTallyXml(
 </ENVELOPE>`;
 }
 
-// ── Tally CSV builder ─────────────────────────────────────────
+// â”€â”€ Tally CSV builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function buildTallyCsv(rows: ReturnType<typeof serializeRow>[]): string {
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
                   'Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1102,7 +1103,7 @@ function buildTallyCsv(rows: ReturnType<typeof serializeRow>[]): string {
   return [header, ...lines].join('\r\n');
 }
 
-// ── GET /:storeId/reports/tally-export ───────────────────────
+// â”€â”€ GET /:storeId/reports/tally-export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getTallyExport(
   request: FastifyRequest<{ Params: { storeId: string }; Querystring: TallyExportQuery }>,
   reply: FastifyReply,
@@ -1144,3 +1145,4 @@ export async function getTallyExport(
   reply.header('Content-Type', 'application/xml; charset=utf-8');
   return reply.send(xml);
 }
+

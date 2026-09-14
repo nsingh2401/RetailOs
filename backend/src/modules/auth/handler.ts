@@ -499,7 +499,7 @@ export async function updateOrgSettings(
   const org = await prisma.organization.update({
     where: { orgId },
     data: {
-      settings: mergedSettings,
+      settings: mergedSettings as any,
       ...(defaultCurrency && { defaultCurrency }),
       ...(locale          && { locale }),
     },

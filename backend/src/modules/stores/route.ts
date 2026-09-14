@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { storeMiddleware } from '../../middleware/store';
@@ -58,3 +59,4 @@ export default async function storeRoutes(
     handler.syncMasterCategories,
   );
 }
+

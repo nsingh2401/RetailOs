@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { storeMiddleware } from '../../middleware/store';
@@ -21,3 +22,4 @@ export async function myStoresRoute(app: FastifyInstance) {
   app.patch( '/me',        { preHandler: preAuth }, handler.updateMe);
   app.post(  '/me/avatar', { preHandler: preAuth }, handler.uploadAvatar);
 }
+

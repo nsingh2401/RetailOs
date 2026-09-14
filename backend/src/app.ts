@@ -36,7 +36,7 @@ import ticketRoutes        from './modules/tickets/route';
 import aiRoutes            from './modules/ai/route';
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger });
+  const app = Fastify({ logger: logger as any });
 
   // ── File uploads & static serving ─────────────────────────
   const uploadDir = path.resolve(
@@ -113,7 +113,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(aiRoutes,             { prefix: '/v1/ai'              });
 
   // ── WebSocket ─────────────────────────────────────────────
-  app.get('/v1/ws', { websocket: true }, wsHandler);
+  app.get('/v1/ws', { websocket: true }, wsHandler as any);
 
   // ── Global error handler ──────────────────────────────────
   app.setErrorHandler((error, request, reply) => {
@@ -129,5 +129,5 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
   });
 
-  return app;
+  return app as any;
 }

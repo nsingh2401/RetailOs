@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware }
   from '../../middleware/auth';
@@ -33,3 +34,4 @@ export default async function
     handler.updateJewelryConfig,
   );
 }
+

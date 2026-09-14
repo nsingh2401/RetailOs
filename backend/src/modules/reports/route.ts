@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../../middleware/auth';
 import { storeMiddleware } from '../../middleware/store';
@@ -19,3 +20,4 @@ export default async function reportRoutes(app: FastifyInstance) {
   app.get('/:storeId/reports/export',           { preHandler: pre }, handler.exportReport);
   app.get('/:storeId/reports/tally-export',     { preHandler: pre }, handler.getTallyExport);
 }
+

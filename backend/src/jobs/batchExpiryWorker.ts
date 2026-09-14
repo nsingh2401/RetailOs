@@ -6,8 +6,10 @@ import { sendPushNotification } from '../lib/firebase';
 
 export const batchExpiryQueue = new Queue('batch-expiry', {
   connection: bullmqConnection,
-  defaultJobOptions: { repeat: { pattern: '0 8 * * *' } },  // Daily at 8:00 AM
 });
+
+// Schedule the repeating job once on startup (daily at 8:00 AM)
+batchExpiryQueue.add('daily-check', {}, { repeat: { pattern: '0 8 * * *' } });
 
 new Worker('batch-expiry', async () => {
   // Get all stores with expiring batches
