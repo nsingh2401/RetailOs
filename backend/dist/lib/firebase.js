@@ -61,7 +61,7 @@ exports.firebaseMessaging = { send: (msg) => getFirebaseApp().messaging().send(m
  * Throws if token is invalid or expired.
  */
 async function verifyFirebaseToken(idToken) {
-    if (process.env.NODE_ENV !== 'production'
+    if ((process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_BYPASS === 'true')
         && idToken.startsWith('dev-uid-')) {
         return idToken.slice('dev-uid-'.length);
     }
@@ -74,7 +74,7 @@ async function verifyFirebaseToken(idToken) {
  * For real OTP tokens, phone is the E.164 number Firebase verified.
  */
 async function verifyFirebaseTokenFull(idToken) {
-    if (process.env.NODE_ENV !== 'production'
+    if ((process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_BYPASS === 'true')
         && idToken.startsWith('dev-uid-')) {
         return { uid: idToken.slice('dev-uid-'.length), phone: undefined };
     }
