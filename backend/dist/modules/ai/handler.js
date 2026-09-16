@@ -40,7 +40,7 @@ async function identifyProduct(request, reply) {
         const resp = await fetch(`${MOONDREAM_URL}/analyze`, {
             method: 'POST',
             body: formData,
-            signal: AbortSignal.timeout(60_000), // 60s — inference can be slow on CPU
+            signal: AbortSignal.timeout(180_000), // 180s — LLaVA inference can be slow on CPU
         });
         if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
