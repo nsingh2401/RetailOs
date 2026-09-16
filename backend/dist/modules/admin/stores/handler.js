@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.listStores = listStores;
 exports.updateStore = updateStore;
 exports.addStoreToOrg = addStoreToOrg;
+exports.deleteStore = deleteStore;
 const prisma_1 = require("../../../lib/prisma");
 const categoryProvisioning_1 = require("../../../services/categoryProvisioning");
 // ── GET /v1/admin/stores ──────────────────────────────────────────
@@ -216,5 +217,32 @@ async function addStoreToOrg(request, reply) {
         }
         throw err;
     }
+}
+// ── DELETE /v1/admin/stores/:storeId ─────────────────────────────
+async function deleteStore(request, reply) {
+    const { storeId } = request.params;
+    // Guard: reject if store has any data
+    const [invoiceCount, movementCount, productCount] = await Promise.all([
+        prisma_1.prisma.invoice.count({ where: { storeId } }),
+        prisma_1.prisma.inventoryMovement.count({ where: { storeId } }),
+        prisma_1.prisma.product.count({ where: { storeId } }),
+    ]);
+    if (invoiceCount > 0 || movementCount > 0 || productCount > 0) {
+        return reply.status(409).send({
+            success: false,
+            error: {
+                code: 'STORE_HAS_DATA',
+                message: 'Store has existing data and cannot be deleted',
+                statusCode: 409,
+            },
+        });
+    }
+    // Delete in dependency order
+    await prisma_1.prisma.$transaction([
+        prisma_1.prisma.category.deleteMany({ where: { storeId } }),
+        prisma_1.prisma.userStoreRole.deleteMany({ where: { storeId } }),
+        prisma_1.prisma.store.delete({ where: { storeId } }),
+    ]);
+    return reply.send({ success: true });
 }
 //# sourceMappingURL=handler.js.map

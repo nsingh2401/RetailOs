@@ -7,5 +7,6 @@ async function adminStoreRoutes(app) {
     app.addHook('preHandler', adminAuth_1.adminAuthMiddleware);
     app.get('/', handler_1.listStores);
     app.patch('/:storeId', handler_1.updateStore);
+    app.delete('/:storeId', handler_1.deleteStore);
 }
 //# sourceMappingURL=route.js.map

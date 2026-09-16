@@ -27,4 +27,9 @@ export declare function addStoreToOrg(request: FastifyRequest<{
         industryType: string;
     };
 }>, reply: FastifyReply): Promise<never>;
+export declare function deleteStore(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map

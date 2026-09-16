@@ -11,5 +11,6 @@ async function adminOrgRoutes(app) {
     app.post('/', handler_1.createOrg);
     app.patch('/:orgId', handler_1.updateOrg);
     app.post('/:orgId/stores', handler_2.addStoreToOrg);
+    app.post('/:orgId/users/:userId/reset-password', handler_1.resetStoreUserPassword);
 }
 //# sourceMappingURL=route.js.map

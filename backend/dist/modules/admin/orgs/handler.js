@@ -7,6 +7,7 @@ exports.listOrgs = listOrgs;
 exports.getOrg = getOrg;
 exports.createOrg = createOrg;
 exports.updateOrg = updateOrg;
+exports.resetStoreUserPassword = resetStoreUserPassword;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const crypto_1 = require("crypto");
 const prisma_1 = require("../../../lib/prisma");
@@ -252,5 +253,33 @@ async function updateOrg(request, reply) {
         }
         throw err;
     }
+}
+// ── POST /v1/admin/orgs/:orgId/users/:userId/reset-password ──────
+async function resetStoreUserPassword(request, reply) {
+    const { orgId, userId } = request.params;
+    const { newPassword } = request.body;
+    if (!newPassword || newPassword.length < 6) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 6 characters', statusCode: 400 },
+        });
+    }
+    // Verify user belongs to this org
+    const user = await prisma_1.prisma.user.findFirst({
+        where: { userId, orgId },
+        select: { userId: true },
+    });
+    if (!user) {
+        return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'User not found in this organisation', statusCode: 404 },
+        });
+    }
+    const passwordHash = await bcryptjs_1.default.hash(newPassword, 12);
+    await prisma_1.prisma.user.update({
+        where: { userId },
+        data: { passwordHash },
+    });
+    return reply.send({ success: true });
 }
 //# sourceMappingURL=handler.js.map

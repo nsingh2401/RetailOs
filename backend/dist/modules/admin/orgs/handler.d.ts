@@ -33,4 +33,13 @@ export declare function updateOrg(request: FastifyRequest<{
         isActive?: boolean;
     };
 }>, reply: FastifyReply): Promise<never>;
+export declare function resetStoreUserPassword(request: FastifyRequest<{
+    Params: {
+        orgId: string;
+        userId: string;
+    };
+    Body: {
+        newPassword: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map
