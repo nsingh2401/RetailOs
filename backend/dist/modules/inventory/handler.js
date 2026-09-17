@@ -30,7 +30,8 @@ async function getStockLevels(request, reply) {
           p.category_id,
           c.name AS category_name,
           p2.pricing_type,
-          b.expiry_date
+          b.expiry_date,
+          img.image_url
         FROM v_stock_levels v
         LEFT JOIN product_variants pv
           ON pv.variant_id = v.variant_id
@@ -49,6 +50,13 @@ async function getStockLevels(request, reply) {
           ORDER BY expiry_date ASC NULLS LAST
           LIMIT 1
         ) b ON true
+        LEFT JOIN LATERAL (
+          SELECT image_url
+          FROM product_images
+          WHERE product_id = p.product_id
+            AND is_primary = true
+          LIMIT 1
+        ) img ON true
         WHERE v.store_id = ${storeId}::uuid
           AND v.is_low_stock = true
         ORDER BY v.updated_at DESC`
@@ -58,7 +66,8 @@ async function getStockLevels(request, reply) {
           p.category_id,
           c.name AS category_name,
           p2.pricing_type,
-          b.expiry_date
+          b.expiry_date,
+          img.image_url
         FROM v_stock_levels v
         LEFT JOIN product_variants pv
           ON pv.variant_id = v.variant_id
@@ -77,6 +86,13 @@ async function getStockLevels(request, reply) {
           ORDER BY expiry_date ASC NULLS LAST
           LIMIT 1
         ) b ON true
+        LEFT JOIN LATERAL (
+          SELECT image_url
+          FROM product_images
+          WHERE product_id = p.product_id
+            AND is_primary = true
+          LIMIT 1
+        ) img ON true
         WHERE v.store_id = ${storeId}::uuid
         ORDER BY v.updated_at DESC`;
     return reply.send({ success: true, data: rows });

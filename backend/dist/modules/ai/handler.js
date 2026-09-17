@@ -81,6 +81,47 @@ async function identifyProduct(request, reply) {
             // HSN lookup non-fatal — continue without it
         }
     }
+    // ── Duplicate check ──────────────────────────────────────────
+    const rawProductName = String(raw.product_name ?? '').trim();
+    const rawBarcode = raw.barcode_if_visible ?? null;
+    const storeIdHdr = request.headers['x-store-id'] ?? '';
+    let isDuplicate = false;
+    let existingProduct = null;
+    if (storeIdHdr) {
+        try {
+            // 1. Exact barcode match
+            if (rawBarcode) {
+                const variant = await prisma_1.prisma.productVariant.findFirst({
+                    where: { storeId: storeIdHdr, barcode: rawBarcode, isActive: true },
+                    include: {
+                        product: { select: { productId: true, name: true, internalSku: true } },
+                    },
+                });
+                if (variant) {
+                    isDuplicate = true;
+                    existingProduct = { ...variant.product, variantId: variant.variantId };
+                }
+            }
+            // 2. Exact name match (case-insensitive) if no barcode hit
+            if (!isDuplicate && rawProductName) {
+                const prod = await prisma_1.prisma.product.findFirst({
+                    where: {
+                        storeId: storeIdHdr,
+                        name: { equals: rawProductName, mode: 'insensitive' },
+                        isActive: true,
+                    },
+                    select: { productId: true, name: true, internalSku: true },
+                });
+                if (prod) {
+                    isDuplicate = true;
+                    existingProduct = prod;
+                }
+            }
+        }
+        catch {
+            // Duplicate check is non-fatal — continue without it
+        }
+    }
     // ── Validate industry type ────────────────────────────────
     const rawIndustry = String(raw.industry_type ?? 'GENERAL').toUpperCase();
     const suggestedIndustry = VALID_INDUSTRY_TYPES.has(rawIndustry) ? rawIndustry : 'GENERAL';
@@ -107,6 +148,8 @@ async function identifyProduct(request, reply) {
             expiryDate: raw.expiry_date_if_visible ?? null,
             barcode: raw.barcode_if_visible ?? null,
             confidence,
+            isDuplicate,
+            existingProduct,
         },
     });
 }
