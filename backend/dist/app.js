@@ -72,6 +72,7 @@ const route_21 = __importDefault(require("./modules/admin/tickets/route"));
 const route_22 = __importDefault(require("./modules/admin/master/route"));
 const route_23 = __importDefault(require("./modules/tickets/route"));
 const route_24 = __importDefault(require("./modules/ai/route"));
+const route_25 = __importDefault(require("./modules/chat/route"));
 async function buildApp() {
     const app = (0, fastify_1.default)({ logger: logger_1.logger });
     // ── File uploads & static serving ─────────────────────────
@@ -136,6 +137,7 @@ async function buildApp() {
     await app.register(route_22.default, { prefix: '/v1/admin/master' });
     await app.register(route_23.default, { prefix: '/v1/tickets' });
     await app.register(route_24.default, { prefix: '/v1/ai' });
+    await app.register(route_25.default, { prefix: '/v1/stores' });
     // ── WebSocket ─────────────────────────────────────────────
     app.get('/v1/ws', { websocket: true }, handler_1.default);
     // ── Global error handler ──────────────────────────────────
