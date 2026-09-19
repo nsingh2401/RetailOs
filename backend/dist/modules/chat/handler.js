@@ -194,13 +194,24 @@ async function chat(request, reply) {
 Respond in the SAME language as the user (Hindi/English/Hinglish — match their style exactly).
 Use ₹ for rupees. Be concise and clear. Do NOT mention SQL, databases, or technical terms.
 If data is given, summarise it in 1-3 sentences, then list the key facts as bullet points.
-If there was a data error, apologise briefly and answer from your knowledge of retail.`;
+If there was a data error, apologise briefly — do NOT guess or invent data.
+
+EMPTY RESULTS RULE (most important):
+If the query returned 0 rows or empty results, respond ONLY with a short honest message
+saying no data was found. Examples:
+  Hindi:   "Aaj koi sale nahi mili."
+  English: "No sales found for today."
+  Hinglish: "Aaj koi record nahi mila."
+Do NOT make up numbers or business advice. Do NOT explain what the query does.
+Do NOT give general tips about running a store. Simply state the data was not found,
+then end with: "Aap koi aur sawaal pooch sakte hain." (or English equivalent).`;
+    // Explicitly tell the model when results are empty so it doesn't hallucinate
     const dataNote = sqlResult.length > 0
-        ? `\n\nData retrieved (${sqlResult.length} rows):\n${JSON.stringify(sqlResult.slice(0, 20), null, 2)}`
+        ? `\n\nQuery returned ${sqlResult.length} row(s):\n${JSON.stringify(sqlResult.slice(0, 20), null, 2)}`
         : sqlError
-            ? `\n\n(Data retrieval failed: ${sqlError} — answer helpfully from general retail knowledge.)`
-            : '';
-    const nlPrompt = `User asked: "${message}"${dataNote}\n\nProvide a helpful response.`;
+            ? `\n\n[DATA ERROR: ${sqlError}]\nDo NOT guess data. Briefly apologise and say to try again.`
+            : `\n\n[EMPTY RESULT: The query ran successfully but returned 0 rows.]\nApply the EMPTY RESULTS RULE above.`;
+    const nlPrompt = `User asked: "${message}"${dataNote}\n\nRespond now:`;
     let naturalResponse = 'Sorry, abhi AI service available nahi hai. Thodi der baad try karein.';
     try {
         naturalResponse = await ollamaGenerate(nlPrompt, nlSystem, 500);
