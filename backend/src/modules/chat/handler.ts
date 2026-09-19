@@ -2,117 +2,12 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../lib/prisma';
 import { redis } from '../../lib/redis';
 import { randomUUID } from 'crypto';
+import { buildSchemaContext } from './schema-context';
 
 const OLLAMA_URL   = process.env.OLLAMA_URL         ?? 'http://localhost:11434';
 const CHAT_MODEL   = process.env.OLLAMA_CHAT_MODEL  ?? 'llama3.2';
 
-// ── Schema context injected into SQL generation prompt ────────
-const SCHEMA_CONTEXT = `
-Database schema (PostgreSQL, all columns snake_case):
-
-TABLE invoices                          -- sales / billing records
-  invoice_id       UUID        PRIMARY KEY
-  store_id         UUID        (always filter on this)
-  customer_id      UUID        nullable FK→customers
-  invoice_date     TIMESTAMPTZ
-  grand_total      DECIMAL
-  paid_amount      DECIMAL
-  status           TEXT        values: 'PAID' | 'PARTIAL' | 'DRAFT' | 'CONFIRMED' | 'VOID'
-  payment_mode     TEXT        values: 'CASH' | 'UPI' | 'CARD' | 'CREDIT'
-
-TABLE invoice_line_items                -- individual products in each invoice
-  line_item_id     UUID        PRIMARY KEY
-  invoice_id       UUID        FK→invoices
-  variant_id       UUID        FK→product_variants
-  quantity         DECIMAL
-  unit_price       DECIMAL
-  taxable_amount   DECIMAL
-  tax_amount       DECIMAL
-  line_total       DECIMAL
-
-TABLE products
-  product_id       UUID        PRIMARY KEY
-  store_id         UUID
-  name             TEXT
-  internal_sku     TEXT
-  category_id      UUID        FK→categories
-  pricing_type     TEXT
-
-TABLE product_variants
-  variant_id       UUID        PRIMARY KEY
-  product_id       UUID        FK→products
-  variant_sku      TEXT
-  stock_quantity   DECIMAL
-  variant_attributes JSONB
-
-TABLE inventory                         -- real-time stock levels
-  inventory_id     UUID        PRIMARY KEY
-  variant_id       UUID        FK→product_variants
-  store_id         UUID
-  quantity         DECIMAL
-
-TABLE customers
-  customer_id      UUID        PRIMARY KEY
-  store_id         UUID
-  name             TEXT
-  phone            TEXT
-  outstanding_balance DECIMAL
-
-TABLE categories
-  category_id      UUID        PRIMARY KEY
-  store_id         UUID
-  name             TEXT
-  parent_id        UUID        nullable (NULL = root category)
-  industry_type    TEXT
-
-TABLE purchase_entries                  -- stock purchase / inward records (NOT invoices)
-  purchase_id      UUID        PRIMARY KEY
-  store_id         UUID
-  supplier_name    TEXT
-  total_amount     DECIMAL
-  purchase_date    TIMESTAMPTZ
-  status           TEXT
-
-TABLE purchase_entry_items              -- line items inside each purchase entry
-  item_id          UUID        PRIMARY KEY
-  purchase_id      UUID        FK→purchase_entries
-  variant_id       UUID        FK→product_variants
-  quantity         DECIMAL
-  unit_cost        DECIMAL
-`.trim();
-
-// ── GROUP BY rules appended to every SQL prompt ───────────────
-const GROUP_BY_RULES = `
-GROUP BY RULES (critical — PostgreSQL enforces these strictly):
-- When using ANY aggregate function (SUM, COUNT, AVG, MAX, MIN), every non-aggregated
-  column in the SELECT list MUST appear in the GROUP BY clause.
-- NEVER select a raw column alongside an aggregate without grouping it.
-- Correct daily sales:
-    SELECT DATE(invoice_date) AS date, SUM(grand_total) AS total
-    FROM invoices
-    WHERE store_id = '<id>' AND status IN ('PAID','PARTIAL')
-    GROUP BY DATE(invoice_date)
-    ORDER BY date DESC
-    LIMIT 30;
-- Correct top products:
-    SELECT p.name, SUM(ili.quantity) AS total_qty, SUM(ili.line_total) AS revenue
-    FROM invoice_line_items ili
-    JOIN product_variants pv ON pv.variant_id = ili.variant_id
-    JOIN products p           ON p.product_id  = pv.product_id
-    JOIN invoices i           ON i.invoice_id  = ili.invoice_id
-    WHERE i.store_id = '<id>' AND i.status IN ('PAID','PARTIAL')
-    GROUP BY p.product_id, p.name
-    ORDER BY total_qty DESC
-    LIMIT 10;
-- Purchase entries (stock inward) use table purchase_entries (NOT purchases):
-    SELECT supplier_name, SUM(total_amount) AS total
-    FROM purchase_entries
-    WHERE store_id = '<id>'
-    GROUP BY supplier_name
-    ORDER BY total DESC
-    LIMIT 10;
-- When in doubt: if you aggregate, GROUP BY all non-aggregate SELECTs.
-`.trim();
+// Schema and SQL rules are in schema-context.ts → buildSchemaContext(storeId)
 
 // ── Ollama generate call ────────────────────────────────────────
 async function ollamaGenerate(
@@ -293,20 +188,8 @@ export async function chat(
     .map((h) => `${h.role}: ${h.content}`)
     .join('\n');
 
-  const sqlSystem =
-`You are a PostgreSQL expert for a retail POS system.
-
-${SCHEMA_CONTEXT}
-
-${GROUP_BY_RULES}
-
-STRICT RULES:
-1. Generate ONLY a SELECT query — never INSERT/UPDATE/DELETE/DROP/ALTER/CREATE.
-2. Every query MUST filter by store_id = '${storeId}' directly, or JOIN a table that already filters by store_id = '${storeId}'.
-3. Always add LIMIT 100 unless the user asks for a single aggregate value (like total sales today).
-4. If the question has nothing to do with store data, reply with exactly: NO_SQL
-5. Reply with ONLY the SQL inside a \`\`\`sql block, or exactly NO_SQL — nothing else.
-6. Always follow GROUP BY rules above — PostgreSQL will reject queries that violate them.`;
+  // buildSchemaContext injects storeId into every WHERE example and SQL rule
+  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildSchemaContext(storeId)}`;
 
   const sqlPrompt = recentHistory
     ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
