@@ -2,12 +2,86 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../lib/prisma';
 import { redis } from '../../lib/redis';
 import { randomUUID } from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import ExcelJS from 'exceljs';
 import { buildSchemaContext } from './schema-context';
 
 const OLLAMA_URL   = process.env.OLLAMA_URL         ?? 'http://localhost:11434';
 const CHAT_MODEL   = process.env.OLLAMA_CHAT_MODEL  ?? 'llama3.2';
+const UPLOAD_DIR   = process.env.UPLOAD_DIR         ?? path.join(process.cwd(), 'uploads');
 
 // Schema and SQL rules are in schema-context.ts → buildSchemaContext(storeId)
+
+// ── Excel intent detection ─────────────────────────────────────
+const EXCEL_INTENT_RE = /excel|download|export|sheet|file\s+chahiye|nikalo|bhejo/i;
+
+function detectExcelIntent(message: string): boolean {
+  return EXCEL_INTENT_RE.test(message);
+}
+
+// ── Generate Excel file from SQL result rows ───────────────────
+async function generateExcel(
+  rows:      Record<string, unknown>[],
+  question:  string,
+  storeId:   string,
+): Promise<{ filename: string; filepath: string }> {
+  // Sheet name: first 3 words of question, sanitised
+  const sheetName = question
+    .replace(/[^\w\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .join(' ')
+    .slice(0, 31) || 'Report'; // Excel max sheet name = 31 chars
+
+  const workbook  = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(sheetName);
+
+  if (rows.length === 0) {
+    worksheet.addRow(['No data found']);
+  } else {
+    const columns = Object.keys(rows[0]);
+
+    // ── Header row — bold, blue bg, white text ──────────────
+    worksheet.columns = columns.map((col) => ({
+      header:  col.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      key:     col,
+      width:   Math.max(col.length + 4, 14),
+    }));
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.font  = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    headerRow.height = 20;
+
+    // ── Data rows ────────────────────────────────────────────
+    rows.forEach((row) => worksheet.addRow(row));
+
+    // ── Auto-width: expand columns based on content ──────────
+    worksheet.columns.forEach((col) => {
+      let maxLen = col.header ? String(col.header).length : 10;
+      col.eachCell?.({ includeEmpty: false }, (cell) => {
+        const len = String(cell.value ?? '').length;
+        if (len > maxLen) maxLen = len;
+      });
+      col.width = Math.min(maxLen + 4, 60);
+    });
+  }
+
+  // ── Save file ────────────────────────────────────────────────
+  const exportDir = path.join(UPLOAD_DIR, 'chat-exports');
+  if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
+
+  const filename = `${storeId}-${Date.now()}.xlsx`;
+  const filepath = path.join(exportDir, filename);
+  await workbook.xlsx.writeFile(filepath);
+
+  return { filename, filepath };
+}
 
 // ── Ollama generate call ────────────────────────────────────────
 async function ollamaGenerate(
@@ -264,7 +338,42 @@ export async function chat(
     request.log.warn({ err }, 'Ollama SQL generation failed');
   }
 
-  // ── Step 3 — Natural language response ────────────────────
+  // ── Step 3 — Excel export (short-circuit if intent detected) ─
+  const wantsExcel = detectExcelIntent(message);
+  let hasExcel     = false;
+  let downloadUrl  = '';
+
+  if (wantsExcel && sqlResult.length > 0) {
+    try {
+      const { filename } = await generateExcel(sqlResult, message, storeId);
+      hasExcel    = true;
+      downloadUrl = `/v1/stores/${storeId}/chat/exports/${filename}`;
+
+      // Short-circuit — no need for full NL generation
+      history.push({ role: 'user',      content: message });
+      history.push({ role: 'assistant', content: 'Aapki Excel file taiyaar hai!' });
+      if (history.length > 20) history = history.slice(-20);
+      try { await redis.setex(historyKey, 86400, JSON.stringify(history)); } catch { /* non-fatal */ }
+
+      return reply.send({
+        success: true,
+        data: {
+          response:       'Aapki Excel file taiyaar hai! ✅ Neeche download button se save karein.',
+          sql:            generatedSQL,
+          data:           sqlResult.slice(0, 100),
+          chartData:      buildChartData(sqlResult),
+          conversationId,
+          hasExcel,
+          downloadUrl,
+        },
+      });
+    } catch (excelErr: unknown) {
+      request.log.warn({ err: excelErr }, 'Excel generation failed — falling back to normal response');
+      // Fall through to normal NL response
+    }
+  }
+
+  // ── Step 4 — Natural language response ────────────────────
   const nlSystem =
 `You are a helpful, friendly retail assistant for BillFlow POS.
 Respond in the SAME language as the user (Hindi/English/Hinglish — match their style exactly).
@@ -383,4 +492,39 @@ export async function getChatHistory(
   } catch { /* non-fatal */ }
 
   return reply.send({ success: true, data: { history, conversationId } });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// GET /v1/stores/:storeId/chat/exports/:filename
+// Serves a previously generated Excel file as a download.
+// ─────────────────────────────────────────────────────────────────
+export async function getExcelExport(
+  request: FastifyRequest<{
+    Params: { storeId: string; filename: string };
+  }>,
+  reply: FastifyReply,
+) {
+  const { storeId, filename } = request.params;
+
+  // Validate filename — must be <storeId>-<timestamp>.xlsx, no path traversal
+  const safe = /^[a-f0-9-]+-\d+\.xlsx$/i.test(filename);
+  if (!safe || !filename.startsWith(storeId)) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'INVALID_FILENAME', message: 'Invalid file name', statusCode: 400 },
+    });
+  }
+
+  const filepath = path.join(UPLOAD_DIR, 'chat-exports', filename);
+  if (!fs.existsSync(filepath)) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'File not found', statusCode: 404 },
+    });
+  }
+
+  const stream = fs.createReadStream(filepath);
+  reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+  return reply.send(stream);
 }

@@ -16,4 +16,10 @@ export declare function getChatHistory(request: FastifyRequest<{
         conversationId?: string;
     };
 }>, reply: FastifyReply): Promise<never>;
+export declare function getExcelExport(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        filename: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map
