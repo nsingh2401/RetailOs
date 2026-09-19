@@ -39,6 +39,8 @@ function extractSQL(text) {
     return null;
 }
 // ── Safety: SELECT-only, no dangerous keywords ─────────────────
+// Also blocks boolean-literal SELECTs where the model hallucinates
+// a YES/NO answer as SQL (e.g. SELECT 'YES', SELECT TRUE, SELECT FALSE).
 function sanitizeSQL(sql) {
     const s = sql.trim().replace(/;+$/, '').trim();
     const up = s.toUpperCase();
@@ -53,7 +55,31 @@ function sanitizeSQL(sql) {
         if (up.includes(kw))
             return null;
     }
+    // Block hallucinated boolean answers: SELECT 'YES', SELECT 'NO',
+    // SELECT TRUE, SELECT FALSE, SELECT 1 AS response, etc.
+    const booleanHallucination = /^SELECT\s+('YES'|'NO'|TRUE|FALSE|1|0)\s*(?:AS\s+\w+)?\s*$/i;
+    if (booleanHallucination.test(s))
+        return null;
     return s;
+}
+// ── Detect invalid/trivial result (boolean col, single RESPONSE col) ──
+// Returns true when the result is meaningless data from a hallucinated query.
+function isInvalidResult(rows) {
+    if (rows.length === 0)
+        return false;
+    const keys = Object.keys(rows[0]).map((k) => k.toLowerCase());
+    // Single column named "response", "answer", "result", "?column?" → hallucination
+    if (keys.length === 1 && ['response', 'answer', 'result', '?column?'].includes(keys[0])) {
+        return true;
+    }
+    // All values are boolean-ish (true/false/yes/no/1/0) — hallucinated boolean answer
+    const allBool = rows.every((row) => Object.values(row).every((v) => {
+        const s = String(v).toLowerCase().trim();
+        return ['true', 'false', 'yes', 'no', '1', '0', 't', 'f'].includes(s);
+    }));
+    if (allBool)
+        return true;
+    return false;
 }
 // ── Detect chartable result (label col + numeric col) ──────────
 function buildChartData(rows) {
@@ -179,9 +205,16 @@ async function chat(request, reply) {
                 // ── Step 2 — Execute SQL (with auto-retry) ──────────
                 if (generatedSQL) {
                     const result = await executeWithRetry(generatedSQL, storeId, sqlSystem, request.log);
-                    sqlResult = result.rows;
                     generatedSQL = result.finalSQL; // may be the fixed SQL
                     sqlError = result.sqlError;
+                    // Treat boolean/trivial results as empty — model hallucinated
+                    if (isInvalidResult(result.rows)) {
+                        request.log.warn({ rows: result.rows }, 'Invalid/boolean SQL result — treating as empty');
+                        sqlResult = [];
+                    }
+                    else {
+                        sqlResult = result.rows;
+                    }
                 }
             }
         }
@@ -230,8 +263,25 @@ like that. Do not use bullet points or dashes. Just plain sentences only.`;
             naturalResponse = `Data fetch mein problem aayi. Please dobara try karein.`;
         }
     }
-    // ── Strip "Key facts:" sections + leading bullets ─────────
-    const cleanResponse = naturalResponse
+    // ── Post-process: strip noise + deduplicate sentences ────────
+    const deduped = (() => {
+        // Split on sentence-ending punctuation, deduplicate, rejoin
+        const sentences = naturalResponse
+            .split(/(?<=[.!?।])\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const seen = new Set();
+        const uniq = [];
+        for (const s of sentences) {
+            const key = s.toLowerCase().replace(/\s+/g, ' ');
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniq.push(s);
+            }
+        }
+        return uniq.join(' ');
+    })();
+    const cleanResponse = deduped
         .replace(/Key\s+facts?[\s\S]*/gi, '') // remove "Key facts:" and everything after
         .replace(/^\s*[-•]\s+/gm, '') // strip leading bullet/dash on each line
         .trim();
