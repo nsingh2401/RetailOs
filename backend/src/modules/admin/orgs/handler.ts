@@ -300,3 +300,42 @@ export async function updateOrg(
     throw err;
   }
 }
+
+// ── POST /v1/admin/orgs/:orgId/users/:userId/reset-password ──────
+export async function resetStoreUserPassword(
+  request: FastifyRequest<{
+    Params: { orgId: string; userId: string };
+    Body:   { newPassword: string };
+  }>,
+  reply: FastifyReply,
+) {
+  const { orgId, userId } = request.params;
+  const { newPassword }   = request.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 6 characters', statusCode: 400 },
+    });
+  }
+
+  // Verify user belongs to this org
+  const user = await prisma.user.findFirst({
+    where: { userId, orgId },
+    select: { userId: true },
+  });
+  if (!user) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'User not found in this organisation', statusCode: 404 },
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({
+    where: { userId },
+    data:  { passwordHash },
+  });
+
+  return reply.send({ success: true });
+}

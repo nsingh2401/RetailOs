@@ -47,7 +47,7 @@ export async function identifyProduct(
     const resp = await fetch(`${MOONDREAM_URL}/analyze`, {
       method: 'POST',
       body:   formData,
-      signal: AbortSignal.timeout(60_000),  // 60s — inference can be slow on CPU
+      signal: AbortSignal.timeout(180_000), // 180s — LLaVA inference can be slow on CPU
     });
 
     if (!resp.ok) {
@@ -92,6 +92,49 @@ export async function identifyProduct(
     }
   }
 
+  // ── Duplicate check ──────────────────────────────────────────
+  const rawProductName = String(raw.product_name ?? '').trim();
+  const rawBarcode     = (raw.barcode_if_visible as string | null) ?? null;
+  const storeIdHdr     = (request.headers['x-store-id'] as string | undefined) ?? '';
+
+  let isDuplicate     = false;
+  let existingProduct: object | null = null;
+
+  if (storeIdHdr) {
+    try {
+      // 1. Exact barcode match
+      if (rawBarcode) {
+        const variant = await (prisma as any).productVariant.findFirst({
+          where: { storeId: storeIdHdr, barcode: rawBarcode, isActive: true },
+          include: {
+            product: { select: { productId: true, name: true, internalSku: true } },
+          },
+        });
+        if (variant) {
+          isDuplicate     = true;
+          existingProduct = { ...variant.product, variantId: variant.variantId };
+        }
+      }
+      // 2. Exact name match (case-insensitive) if no barcode hit
+      if (!isDuplicate && rawProductName) {
+        const prod = await (prisma as any).product.findFirst({
+          where: {
+            storeId:  storeIdHdr,
+            name:     { equals: rawProductName, mode: 'insensitive' },
+            isActive: true,
+          },
+          select: { productId: true, name: true, internalSku: true },
+        });
+        if (prod) {
+          isDuplicate     = true;
+          existingProduct = prod;
+        }
+      }
+    } catch {
+      // Duplicate check is non-fatal — continue without it
+    }
+  }
+
   // ── Validate industry type ────────────────────────────────
   const rawIndustry      = String(raw.industry_type ?? 'GENERAL').toUpperCase();
   const suggestedIndustry = VALID_INDUSTRY_TYPES.has(rawIndustry) ? rawIndustry : 'GENERAL';
@@ -121,6 +164,8 @@ export async function identifyProduct(
       expiryDate:   (raw.expiry_date_if_visible  as string | null) ?? null,
       barcode:      (raw.barcode_if_visible       as string | null) ?? null,
       confidence,
+      isDuplicate,
+      existingProduct,
     },
   });
 }

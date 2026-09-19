@@ -34,6 +34,7 @@ import adminTicketRoutes   from './modules/admin/tickets/route';
 import adminMasterRoutes   from './modules/admin/master/route';
 import ticketRoutes        from './modules/tickets/route';
 import aiRoutes            from './modules/ai/route';
+import chatRoutes          from './modules/chat/route';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: logger as any });
@@ -111,6 +112,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(adminMasterRoutes,    { prefix: '/v1/admin/master'    });
   await app.register(ticketRoutes,         { prefix: '/v1/tickets'         });
   await app.register(aiRoutes,             { prefix: '/v1/ai'              });
+  await app.register(chatRoutes,           { prefix: '/v1/stores'          });
 
   // ── WebSocket ─────────────────────────────────────────────
   app.get('/v1/ws', { websocket: true }, wsHandler as any);

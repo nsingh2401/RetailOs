@@ -28,7 +28,7 @@ export const firebaseMessaging = { send: (msg: admin.messaging.Message) => getFi
  * Throws if token is invalid or expired.
  */
 export async function verifyFirebaseToken(idToken: string): Promise<string> {
-  if (process.env.NODE_ENV !== 'production'
+  if ((process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_BYPASS === 'true')
       && idToken.startsWith('dev-uid-')) {
     return idToken.slice('dev-uid-'.length);
   }
@@ -44,7 +44,7 @@ export async function verifyFirebaseToken(idToken: string): Promise<string> {
 export async function verifyFirebaseTokenFull(
   idToken: string,
 ): Promise<{ uid: string; phone?: string }> {
-  if (process.env.NODE_ENV !== 'production'
+  if ((process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_BYPASS === 'true')
       && idToken.startsWith('dev-uid-')) {
     return { uid: idToken.slice('dev-uid-'.length), phone: undefined };
   }

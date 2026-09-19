@@ -250,3 +250,38 @@ export async function addStoreToOrg(
     throw err;
   }
 }
+
+// ── DELETE /v1/admin/stores/:storeId ─────────────────────────────
+export async function deleteStore(
+  request: FastifyRequest<{ Params: { storeId: string } }>,
+  reply: FastifyReply,
+) {
+  const { storeId } = request.params;
+
+  // Guard: reject if store has any data
+  const [invoiceCount, movementCount, productCount] = await Promise.all([
+    prisma.invoice.count({ where: { storeId } }),
+    prisma.inventoryMovement.count({ where: { storeId } }),
+    prisma.product.count({ where: { storeId } }),
+  ]);
+
+  if (invoiceCount > 0 || movementCount > 0 || productCount > 0) {
+    return reply.status(409).send({
+      success: false,
+      error: {
+        code:       'STORE_HAS_DATA',
+        message:    'Store has existing data and cannot be deleted',
+        statusCode: 409,
+      },
+    });
+  }
+
+  // Delete in dependency order
+  await prisma.$transaction([
+    prisma.category.deleteMany({ where: { storeId } }),
+    prisma.userStoreRole.deleteMany({ where: { storeId } }),
+    prisma.store.delete({ where: { storeId } }),
+  ]);
+
+  return reply.send({ success: true });
+}
