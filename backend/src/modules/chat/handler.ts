@@ -241,7 +241,10 @@ saying no data was found. Examples:
   Hinglish: "Aaj koi record nahi mila."
 Do NOT make up numbers or business advice. Do NOT explain what the query does.
 Do NOT give general tips about running a store. Simply state the data was not found,
-then end with: "Aap koi aur sawaal pooch sakte hain." (or English equivalent).`;
+then end with: "Aap koi aur sawaal pooch sakte hain." (or English equivalent).
+
+CRITICAL: Do NOT write "Key facts", "Key points", "Key Facts:", or any section heading
+like that. Do not use bullet points or dashes. Just plain sentences only.`;
 
   // Explicitly tell the model when results are empty so it doesn't hallucinate
   const dataNote =
@@ -269,9 +272,15 @@ then end with: "Aap koi aur sawaal pooch sakte hain." (or English equivalent).`;
     }
   }
 
+  // ── Strip "Key facts:" sections + leading bullets ─────────
+  const cleanResponse = naturalResponse
+    .replace(/Key\s+facts?[\s\S]*/gi, '')   // remove "Key facts:" and everything after
+    .replace(/^\s*[-•]\s+/gm, '')           // strip leading bullet/dash on each line
+    .trim();
+
   // ── Save updated history to Redis (keep last 20 msgs) ─────
   history.push({ role: 'user',      content: message });
-  history.push({ role: 'assistant', content: naturalResponse });
+  history.push({ role: 'assistant', content: cleanResponse });
   if (history.length > 20) history = history.slice(-20);
 
   try {
@@ -284,7 +293,7 @@ then end with: "Aap koi aur sawaal pooch sakte hain." (or English equivalent).`;
   return reply.send({
     success: true,
     data: {
-      response:       naturalResponse,
+      response:       cleanResponse,
       sql:            generatedSQL,
       data:           sqlResult.slice(0, 100),
       chartData,
