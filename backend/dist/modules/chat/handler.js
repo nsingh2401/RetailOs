@@ -9,34 +9,104 @@ const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 const CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL ?? 'llama3.2';
 // ── Schema context injected into SQL generation prompt ────────
 const SCHEMA_CONTEXT = `
-Database schema (PostgreSQL, snake_case columns):
+Database schema (PostgreSQL, all columns snake_case):
 
-invoices(invoice_id UUID PK, store_id UUID, customer_id UUID nullable, invoice_date TIMESTAMPTZ,
-  grand_total DECIMAL, status TEXT -- values: PAID PARTIAL DRAFT CONFIRMED VOID,
-  payment_mode TEXT -- values: CASH UPI CARD CREDIT)
+TABLE invoices
+  invoice_id       UUID        PRIMARY KEY
+  store_id         UUID        (always filter on this)
+  customer_id      UUID        nullable FK→customers
+  invoice_date     TIMESTAMPTZ
+  grand_total      DECIMAL
+  status           TEXT        values: 'PAID' | 'PARTIAL' | 'DRAFT' | 'CONFIRMED' | 'VOID'
+  payment_mode     TEXT        values: 'CASH' | 'UPI' | 'CARD' | 'CREDIT'
 
-invoice_line_items(line_item_id UUID PK, invoice_id UUID FK→invoices, variant_id UUID FK→product_variants,
-  quantity DECIMAL, unit_price DECIMAL, taxable_amount DECIMAL, tax_amount DECIMAL, line_total DECIMAL)
+TABLE invoice_line_items
+  line_item_id     UUID        PRIMARY KEY
+  invoice_id       UUID        FK→invoices
+  variant_id       UUID        FK→product_variants
+  quantity         DECIMAL
+  unit_price       DECIMAL
+  taxable_amount   DECIMAL
+  tax_amount       DECIMAL
+  line_total       DECIMAL
 
-products(product_id UUID PK, store_id UUID, name TEXT, category_id UUID FK→categories,
-  internal_sku TEXT, pricing_type TEXT, is_active BOOLEAN)
+TABLE products
+  product_id       UUID        PRIMARY KEY
+  store_id         UUID
+  name             TEXT
+  category_id      UUID        FK→categories
+  internal_sku     TEXT
+  pricing_type     TEXT
+  is_active        BOOLEAN
 
-product_variants(variant_id UUID PK, product_id UUID FK→products, store_id UUID,
-  variant_sku TEXT, stock_quantity DECIMAL, barcode TEXT, is_active BOOLEAN)
+TABLE product_variants
+  variant_id       UUID        PRIMARY KEY
+  product_id       UUID        FK→products
+  store_id         UUID
+  variant_sku      TEXT
+  stock_quantity   DECIMAL
+  barcode          TEXT
+  is_active        BOOLEAN
 
-inventory(inventory_id UUID PK, variant_id UUID FK→product_variants, store_id UUID,
-  quantity DECIMAL, reorder_point DECIMAL)
+TABLE inventory
+  inventory_id     UUID        PRIMARY KEY
+  variant_id       UUID        FK→product_variants
+  store_id         UUID
+  quantity         DECIMAL
+  reorder_point    DECIMAL
 
-customers(customer_id UUID PK, store_id UUID, name TEXT, phone TEXT,
-  outstanding_balance DECIMAL, is_active BOOLEAN)
+TABLE customers
+  customer_id      UUID        PRIMARY KEY
+  store_id         UUID
+  name             TEXT
+  phone            TEXT
+  outstanding_balance DECIMAL
+  is_active        BOOLEAN
 
-categories(category_id UUID PK, store_id UUID, name TEXT, parent_id UUID nullable)
+TABLE categories
+  category_id      UUID        PRIMARY KEY
+  store_id         UUID
+  name             TEXT
+  parent_id        UUID        nullable (NULL = root category)
 
-purchases(purchase_id UUID PK, store_id UUID, total_amount DECIMAL,
-  purchase_date TIMESTAMPTZ, status TEXT)
+TABLE purchases
+  purchase_id      UUID        PRIMARY KEY
+  store_id         UUID
+  total_amount     DECIMAL
+  purchase_date    TIMESTAMPTZ
+  status           TEXT
 
-purchase_items(purchase_item_id UUID PK, purchase_id UUID FK→purchases,
-  product_id UUID FK→products, quantity DECIMAL, unit_cost DECIMAL)
+TABLE purchase_items
+  purchase_item_id UUID        PRIMARY KEY
+  purchase_id      UUID        FK→purchases
+  product_id       UUID        FK→products
+  quantity         DECIMAL
+  unit_cost        DECIMAL
+`.trim();
+// ── GROUP BY rules appended to every SQL prompt ───────────────
+const GROUP_BY_RULES = `
+GROUP BY RULES (critical — PostgreSQL enforces these strictly):
+- When using ANY aggregate function (SUM, COUNT, AVG, MAX, MIN), every non-aggregated
+  column in the SELECT list MUST appear in the GROUP BY clause.
+- NEVER select a raw column alongside an aggregate without grouping it.
+- Correct daily sales:
+    SELECT DATE(invoice_date) AS date, SUM(grand_total) AS total
+    FROM invoices
+    WHERE store_id = '<id>' AND status IN ('PAID','PARTIAL')
+    GROUP BY DATE(invoice_date)
+    ORDER BY date DESC
+    LIMIT 30;
+- Correct top products:
+    SELECT p.name, SUM(ili.quantity) AS total_qty, SUM(ili.line_total) AS revenue
+    FROM invoice_line_items ili
+    JOIN product_variants pv ON pv.variant_id = ili.variant_id
+    JOIN products p           ON p.product_id  = pv.product_id
+    JOIN invoices i           ON i.invoice_id  = ili.invoice_id
+    WHERE i.store_id = '<id>' AND i.status IN ('PAID','PARTIAL')
+    GROUP BY p.product_id, p.name
+    ORDER BY total_qty DESC
+    LIMIT 10;
+- When in doubt: if you aggregate, GROUP BY all non-aggregate SELECTs.
 `.trim();
 // ── Ollama generate call ────────────────────────────────────────
 async function ollamaGenerate(prompt, system, maxTokens = 512) {
@@ -59,11 +129,9 @@ async function ollamaGenerate(prompt, system, maxTokens = 512) {
 }
 // ── Extract SQL from LLM output ────────────────────────────────
 function extractSQL(text) {
-    // prefer ```sql ... ``` block
     const blockMatch = text.match(/```(?:sql)?\s*([\s\S]+?)```/i);
     if (blockMatch)
         return blockMatch[1].trim();
-    // fallback: first SELECT...
     const inlineMatch = text.match(/SELECT[\s\S]+/i);
     if (inlineMatch)
         return inlineMatch[0].split(';')[0].trim();
@@ -117,6 +185,56 @@ function serializeRows(rows) {
         return out;
     });
 }
+// ── Execute SQL with one auto-retry on failure ─────────────────
+// On failure, sends SQL + error back to Llama to generate a fix,
+// then executes the corrected SQL. Returns { rows, sql, error }.
+async function executeWithRetry(sql, storeId, sqlSystem, log) {
+    // ── First attempt ─────────────────────────────────────────
+    try {
+        const rows = await prisma_1.prisma.$queryRawUnsafe(sql);
+        return { rows: serializeRows(rows), finalSQL: sql, sqlError: null };
+    }
+    catch (firstErr) {
+        const firstErrMsg = firstErr.message ?? 'SQL execution failed';
+        log.warn({ err: firstErr, sql }, 'SQL first attempt failed — retrying with LLM fix');
+        // ── Retry: ask Llama to fix the SQL ──────────────────────
+        const fixPrompt = `The following PostgreSQL query failed with this error:\n\n` +
+            `Error: ${firstErrMsg}\n\n` +
+            `Failed SQL:\n\`\`\`sql\n${sql}\n\`\`\`\n\n` +
+            `Fix the SQL so it runs correctly. Remember:\n` +
+            `- store_id must equal '${storeId}'\n` +
+            `- All non-aggregated SELECT columns must be in GROUP BY\n` +
+            `- Only SELECT statements allowed\n\n` +
+            `Return ONLY the corrected SQL in a \`\`\`sql block.`;
+        try {
+            const fixResp = await ollamaGenerate(fixPrompt, sqlSystem, 400);
+            const extracted = extractSQL(fixResp);
+            const fixedSQL = extracted ? sanitizeSQL(extracted) : null;
+            if (!fixedSQL) {
+                return { rows: [], finalSQL: sql, sqlError: `Auto-fix produced no valid SQL. Original error: ${firstErrMsg}` };
+            }
+            // ── Second attempt ──────────────────────────────────────
+            try {
+                const rows2 = await prisma_1.prisma.$queryRawUnsafe(fixedSQL);
+                log.warn({ fixedSQL }, 'SQL retry succeeded after LLM fix');
+                return { rows: serializeRows(rows2), finalSQL: fixedSQL, sqlError: null };
+            }
+            catch (secondErr) {
+                const secondErrMsg = secondErr.message ?? 'Retry failed';
+                log.warn({ err: secondErr, fixedSQL }, 'SQL retry also failed');
+                return {
+                    rows: [],
+                    finalSQL: fixedSQL,
+                    sqlError: `Could not retrieve data after two attempts. (${secondErrMsg})`,
+                };
+            }
+        }
+        catch (fixErr) {
+            log.warn({ err: fixErr }, 'LLM SQL fix generation failed');
+            return { rows: [], finalSQL: sql, sqlError: firstErrMsg };
+        }
+    }
+}
 // ─────────────────────────────────────────────────────────────────
 // POST /v1/stores/:storeId/chat
 // ─────────────────────────────────────────────────────────────────
@@ -147,12 +265,15 @@ async function chat(request, reply) {
 
 ${SCHEMA_CONTEXT}
 
+${GROUP_BY_RULES}
+
 STRICT RULES:
 1. Generate ONLY a SELECT query — never INSERT/UPDATE/DELETE/DROP/ALTER/CREATE.
-2. Every query MUST filter by store_id = '${storeId}' directly, or join a table that already has store_id = '${storeId}'.
-3. Always add LIMIT 100 unless the user asks for a single aggregate value.
+2. Every query MUST filter by store_id = '${storeId}' directly, or JOIN a table that already filters by store_id = '${storeId}'.
+3. Always add LIMIT 100 unless the user asks for a single aggregate value (like total sales today).
 4. If the question has nothing to do with store data, reply with exactly: NO_SQL
-5. Reply with ONLY the SQL inside a \`\`\`sql block, or exactly NO_SQL — nothing else.`;
+5. Reply with ONLY the SQL inside a \`\`\`sql block, or exactly NO_SQL — nothing else.
+6. Always follow GROUP BY rules above — PostgreSQL will reject queries that violate them.`;
     const sqlPrompt = recentHistory
         ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
         : `User question: ${message}`;
@@ -160,21 +281,17 @@ STRICT RULES:
     let sqlResult = [];
     let sqlError = null;
     try {
-        const sqlResp = await ollamaGenerate(sqlPrompt, sqlSystem, 300);
+        const sqlResp = await ollamaGenerate(sqlPrompt, sqlSystem, 400);
         if (!sqlResp.includes('NO_SQL')) {
             const extracted = extractSQL(sqlResp);
             if (extracted) {
                 generatedSQL = sanitizeSQL(extracted);
-                // ── Step 2 — Execute SQL ─────────────────────────────
+                // ── Step 2 — Execute SQL (with auto-retry) ──────────
                 if (generatedSQL) {
-                    try {
-                        const rows = await prisma_1.prisma.$queryRawUnsafe(generatedSQL);
-                        sqlResult = serializeRows(rows);
-                    }
-                    catch (err) {
-                        sqlError = err.message ?? 'SQL execution failed';
-                        request.log.warn({ err, sql: generatedSQL }, 'SQL execution error');
-                    }
+                    const result = await executeWithRetry(generatedSQL, storeId, sqlSystem, request.log);
+                    sqlResult = result.rows;
+                    generatedSQL = result.finalSQL; // may be the fixed SQL
+                    sqlError = result.sqlError;
                 }
             }
         }
@@ -184,26 +301,29 @@ STRICT RULES:
     }
     // ── Step 3 — Natural language response ────────────────────
     const nlSystem = `You are a helpful, friendly retail assistant for BillFlow POS.
-Respond in the SAME language as the user (Hindi/English/Hinglish — match their style).
-Use ₹ for rupees. Be concise. Do NOT mention SQL, databases, or technical terms.
-If data is given, summarise it clearly in 1-3 sentences then list key facts.`;
+Respond in the SAME language as the user (Hindi/English/Hinglish — match their style exactly).
+Use ₹ for rupees. Be concise and clear. Do NOT mention SQL, databases, or technical terms.
+If data is given, summarise it in 1-3 sentences, then list the key facts as bullet points.
+If there was a data error, apologise briefly and answer from your knowledge of retail.`;
     const dataNote = sqlResult.length > 0
         ? `\n\nData retrieved (${sqlResult.length} rows):\n${JSON.stringify(sqlResult.slice(0, 20), null, 2)}`
         : sqlError
-            ? `\n\n(Note: data query had an error — give a helpful answer based on general knowledge of retail.)`
+            ? `\n\n(Data retrieval failed: ${sqlError} — answer helpfully from general retail knowledge.)`
             : '';
     const nlPrompt = `User asked: "${message}"${dataNote}\n\nProvide a helpful response.`;
     let naturalResponse = 'Sorry, abhi AI service available nahi hai. Thodi der baad try karein.';
     try {
-        naturalResponse = await ollamaGenerate(nlPrompt, nlSystem, 400);
+        naturalResponse = await ollamaGenerate(nlPrompt, nlSystem, 500);
     }
     catch (err) {
         request.log.warn({ err }, 'Ollama NL response failed');
         if (sqlResult.length > 0) {
-            // Fallback: basic summary from data
             naturalResponse =
                 `Result mil gaya (${sqlResult.length} rows): ` +
                     JSON.stringify(sqlResult.slice(0, 3));
+        }
+        else if (sqlError) {
+            naturalResponse = `Data fetch mein problem aayi. Please dobara try karein.`;
         }
     }
     // ── Save updated history to Redis (keep last 20 msgs) ─────
