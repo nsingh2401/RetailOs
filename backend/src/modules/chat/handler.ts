@@ -10,16 +10,17 @@ const CHAT_MODEL   = process.env.OLLAMA_CHAT_MODEL  ?? 'llama3.2';
 const SCHEMA_CONTEXT = `
 Database schema (PostgreSQL, all columns snake_case):
 
-TABLE invoices
+TABLE invoices                          -- sales / billing records
   invoice_id       UUID        PRIMARY KEY
   store_id         UUID        (always filter on this)
   customer_id      UUID        nullable FK→customers
   invoice_date     TIMESTAMPTZ
   grand_total      DECIMAL
+  paid_amount      DECIMAL
   status           TEXT        values: 'PAID' | 'PARTIAL' | 'DRAFT' | 'CONFIRMED' | 'VOID'
   payment_mode     TEXT        values: 'CASH' | 'UPI' | 'CARD' | 'CREDIT'
 
-TABLE invoice_line_items
+TABLE invoice_line_items                -- individual products in each invoice
   line_item_id     UUID        PRIMARY KEY
   invoice_id       UUID        FK→invoices
   variant_id       UUID        FK→product_variants
@@ -33,26 +34,22 @@ TABLE products
   product_id       UUID        PRIMARY KEY
   store_id         UUID
   name             TEXT
-  category_id      UUID        FK→categories
   internal_sku     TEXT
+  category_id      UUID        FK→categories
   pricing_type     TEXT
-  is_active        BOOLEAN
 
 TABLE product_variants
   variant_id       UUID        PRIMARY KEY
   product_id       UUID        FK→products
-  store_id         UUID
   variant_sku      TEXT
   stock_quantity   DECIMAL
-  barcode          TEXT
-  is_active        BOOLEAN
+  variant_attributes JSONB
 
-TABLE inventory
+TABLE inventory                         -- real-time stock levels
   inventory_id     UUID        PRIMARY KEY
   variant_id       UUID        FK→product_variants
   store_id         UUID
   quantity         DECIMAL
-  reorder_point    DECIMAL
 
 TABLE customers
   customer_id      UUID        PRIMARY KEY
@@ -60,25 +57,26 @@ TABLE customers
   name             TEXT
   phone            TEXT
   outstanding_balance DECIMAL
-  is_active        BOOLEAN
 
 TABLE categories
   category_id      UUID        PRIMARY KEY
   store_id         UUID
   name             TEXT
   parent_id        UUID        nullable (NULL = root category)
+  industry_type    TEXT
 
-TABLE purchases
+TABLE purchase_entries                  -- stock purchase / inward records (NOT invoices)
   purchase_id      UUID        PRIMARY KEY
   store_id         UUID
+  supplier_name    TEXT
   total_amount     DECIMAL
   purchase_date    TIMESTAMPTZ
   status           TEXT
 
-TABLE purchase_items
-  purchase_item_id UUID        PRIMARY KEY
-  purchase_id      UUID        FK→purchases
-  product_id       UUID        FK→products
+TABLE purchase_entry_items              -- line items inside each purchase entry
+  item_id          UUID        PRIMARY KEY
+  purchase_id      UUID        FK→purchase_entries
+  variant_id       UUID        FK→product_variants
   quantity         DECIMAL
   unit_cost        DECIMAL
 `.trim();
@@ -105,6 +103,13 @@ GROUP BY RULES (critical — PostgreSQL enforces these strictly):
     WHERE i.store_id = '<id>' AND i.status IN ('PAID','PARTIAL')
     GROUP BY p.product_id, p.name
     ORDER BY total_qty DESC
+    LIMIT 10;
+- Purchase entries (stock inward) use table purchase_entries (NOT purchases):
+    SELECT supplier_name, SUM(total_amount) AS total
+    FROM purchase_entries
+    WHERE store_id = '<id>'
+    GROUP BY supplier_name
+    ORDER BY total DESC
     LIMIT 10;
 - When in doubt: if you aggregate, GROUP BY all non-aggregate SELECTs.
 `.trim();
