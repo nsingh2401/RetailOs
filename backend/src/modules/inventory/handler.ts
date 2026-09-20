@@ -360,6 +360,7 @@ export async function createPurchase(
       const purchaseEntry = await tx.purchaseEntry.create({
         data: {
           storeId,
+          supplierName:   body.supplierName,
           brandId:        body.brandId,
           invoiceNumber:  body.invoiceNumber,
           purchaseDate:   new Date(body.purchaseDate),

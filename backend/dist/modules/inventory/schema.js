@@ -20,6 +20,7 @@ const PurchaseItemSchema = zod_1.z.object({
     expiryDate: zod_1.z.string().optional(),
 });
 exports.CreatePurchaseSchema = zod_1.z.object({
+    supplierName: zod_1.z.string().max(200).optional(),
     brandId: zod_1.z.string().uuid().optional(),
     invoiceNumber: zod_1.z.string().optional(),
     purchaseDate: zod_1.z.string().default(() => new Date().toISOString().split('T')[0]),

@@ -22,6 +22,7 @@ const PurchaseItemSchema = z.object({
 });
 
 export const CreatePurchaseSchema = z.object({
+  supplierName:  z.string().max(200).optional(),
   brandId:       z.string().uuid().optional(),
   invoiceNumber: z.string().optional(),
   purchaseDate:  z.string().default(() => new Date().toISOString().split('T')[0]),

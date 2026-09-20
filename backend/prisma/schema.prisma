@@ -644,6 +644,7 @@ model Batch {
 model PurchaseEntry {
   purchaseId      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("purchase_id")
   storeId         String   @db.Uuid @map("store_id")
+  supplierName    String?  @db.VarChar(200) @map("supplier_name")
   brandId         String?  @db.Uuid @map("brand_id")
   invoiceNumber   String?  @db.VarChar(100) @map("invoice_number")
   purchaseDate    DateTime @db.Date @map("purchase_date")
