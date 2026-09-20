@@ -232,7 +232,10 @@ async function executeWithRetry(sql, storeId, sqlSystem, log) {
 // ─────────────────────────────────────────────────────────────────
 async function chat(request, reply) {
     const { storeId } = request.params;
-    const { message, conversationId: incomingId } = request.body;
+    const { message, conversationId: incomingId, clientDate: rawDate, timezone: rawTz, } = request.body;
+    // Use device-provided date/tz; fall back to server UTC
+    const clientDate = rawDate ?? new Date().toISOString().slice(0, 10);
+    const clientTz = rawTz ?? 'Asia/Kolkata';
     if (!message?.trim()) {
         return reply.status(400).send({
             success: false,
@@ -254,10 +257,10 @@ async function chat(request, reply) {
         .map((h) => `${h.role}: ${h.content}`)
         .join('\n');
     // buildFocusedContext sends only schemas + examples relevant to this message
-    const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${(0, schema_context_1.buildFocusedContext)(message, storeId)}`;
+    const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${(0, schema_context_1.buildFocusedContext)(message, storeId, clientDate, clientTz)}`;
     const sqlPrompt = recentHistory
-        ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
-        : `User question: ${message}`;
+        ? `Previous conversation:\n${recentHistory}\n\nToday is ${clientDate} (${clientTz}).\nUser question: ${message}`
+        : `Today is ${clientDate} (${clientTz}).\nUser question: ${message}`;
     let generatedSQL = null;
     let sqlResult = [];
     let sqlError = null;

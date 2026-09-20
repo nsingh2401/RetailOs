@@ -116,12 +116,12 @@ const SCHEMA_PURCHASE_ENTRY_ITEMS = `TABLE purchase_entry_items  (line items ins
 const EXAMPLES = [
     {
         topics: ['sales'],
-        text: (s) => `Q: Aaj kitni sale hui?
+        text: (s, d) => `Q: Aaj kitni sale hui?
 SQL:
   SELECT SUM(grand_total) AS total_sale, COUNT(*) AS invoice_count
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE(invoice_date) = CURRENT_DATE
+    AND DATE(invoice_date) = '${d}'::date
     AND status IN ('PAID','PARTIAL');`,
     },
     {
@@ -135,7 +135,7 @@ SQL:
     },
     {
         topics: ['sales', 'inventory'],
-        text: (s) => `Q: Pichle hafte top 5 products
+        text: (s, d) => `Q: Pichle hafte top 5 products
 SQL:
   SELECT p.name, SUM(ili.quantity) AS units_sold
   FROM invoice_line_items ili
@@ -143,7 +143,7 @@ SQL:
   JOIN products p           ON p.product_id  = pv.product_id
   JOIN invoices i           ON i.invoice_id  = ili.invoice_id
   WHERE i.store_id = '${s}'
-    AND i.invoice_date >= CURRENT_DATE - INTERVAL '7 days'
+    AND i.invoice_date >= '${d}'::date - INTERVAL '7 days'
     AND i.status IN ('PAID','PARTIAL')
   GROUP BY p.name
   ORDER BY units_sold DESC
@@ -151,13 +151,13 @@ SQL:
     },
     {
         topics: ['gst'],
-        text: (s) => `Q: Is mahine GST kitna hua?
+        text: (s, d) => `Q: Is mahine GST kitna hua?
 SQL:
   SELECT SUM(ili.taxable_amount) AS taxable, SUM(ili.tax_amount) AS gst_collected
   FROM invoice_line_items ili
   JOIN invoices i ON i.invoice_id = ili.invoice_id
   WHERE i.store_id = '${s}'
-    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', '${d}'::date)
     AND i.status IN ('PAID','PARTIAL');`,
     },
     {
@@ -184,34 +184,34 @@ SQL:
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: Yesterday sales
+        text: (s, d) => `Q: Yesterday sales
 SQL:
   SELECT SUM(grand_total) AS total, COUNT(*) AS invoices
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE(invoice_date) = CURRENT_DATE - 1
+    AND DATE(invoice_date) = '${d}'::date - 1
     AND status IN ('PAID','PARTIAL');`,
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: This week cash vs UPI collection
+        text: (s, d) => `Q: This week cash vs UPI collection
 SQL:
   SELECT payment_mode, SUM(grand_total) AS total
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', '${d}'::date)
     AND status IN ('PAID','PARTIAL')
   GROUP BY payment_mode;`,
     },
     {
         topics: ['customer'],
-        text: (s) => `Q: Pichle 30 din mein kaunsa customer sabse zyada aaya?
+        text: (s, d) => `Q: Pichle 30 din mein kaunsa customer sabse zyada aaya?
 SQL:
   SELECT c.name, COUNT(i.invoice_id) AS visit_count, SUM(i.grand_total) AS total_spent
   FROM invoices i
   JOIN customers c ON c.customer_id = i.customer_id
   WHERE i.store_id = '${s}'
-    AND i.invoice_date >= CURRENT_DATE - INTERVAL '30 days'
+    AND i.invoice_date >= '${d}'::date - INTERVAL '30 days'
     AND i.status IN ('PAID','PARTIAL')
   GROUP BY c.name
   ORDER BY visit_count DESC
@@ -219,16 +219,16 @@ SQL:
     },
     {
         topics: ['purchase'],
-        text: (s) => `Q: Is saal ki total purchase kitni hai?
+        text: (s, d) => `Q: Is saal ki total purchase kitni hai?
 SQL:
   SELECT SUM(total_amount) AS total_purchase
   FROM purchase_entries
   WHERE store_id = '${s}'
-    AND DATE_TRUNC('year', purchase_date) = DATE_TRUNC('year', CURRENT_DATE);`,
+    AND DATE_TRUNC('year', purchase_date) = DATE_TRUNC('year', '${d}'::date);`,
     },
     {
         topics: ['category', 'sales'],
-        text: (s) => `Q: Which category sold most this month?
+        text: (s, d) => `Q: Which category sold most this month?
 SQL:
   SELECT cat.name, SUM(ili.line_total) AS revenue
   FROM invoice_line_items ili
@@ -237,7 +237,7 @@ SQL:
   JOIN categories cat       ON cat.category_id = p.category_id
   JOIN invoices i           ON i.invoice_id  = ili.invoice_id
   WHERE i.store_id = '${s}'
-    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', '${d}'::date)
     AND i.status IN ('PAID','PARTIAL')
   GROUP BY cat.name
   ORDER BY revenue DESC
@@ -245,12 +245,12 @@ SQL:
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: Aaj UPI se kitna aaya?
+        text: (s, d) => `Q: Aaj UPI se kitna aaya?
 SQL:
   SELECT SUM(grand_total) AS upi_collection
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE(invoice_date) = CURRENT_DATE
+    AND DATE(invoice_date) = '${d}'::date
     AND payment_mode = 'UPI'
     AND status IN ('PAID','PARTIAL');`,
     },
@@ -266,13 +266,13 @@ SQL:
     },
     {
         topics: ['customer'],
-        text: (s) => `Q: Last month top customer
+        text: (s, d) => `Q: Last month top customer
 SQL:
   SELECT c.name, SUM(i.grand_total) AS total_spent
   FROM invoices i
   JOIN customers c ON c.customer_id = i.customer_id
   WHERE i.store_id = '${s}'
-    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', '${d}'::date - INTERVAL '1 month')
     AND i.status IN ('PAID','PARTIAL')
   GROUP BY c.name
   ORDER BY total_spent DESC
@@ -280,7 +280,7 @@ SQL:
     },
     {
         topics: ['purchase'],
-        text: (s) => `Q: Expiry wale products dikhao
+        text: (s, d) => `Q: Expiry wale products dikhao
 SQL:
   SELECT p.name, pv.variant_sku, pei.expiry_date
   FROM purchase_entry_items pei
@@ -289,36 +289,36 @@ SQL:
   JOIN purchase_entries pe  ON pe.purchase_id = pei.purchase_id
   WHERE pe.store_id = '${s}'
     AND pei.expiry_date IS NOT NULL
-    AND pei.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
+    AND pei.expiry_date <= '${d}'::date + INTERVAL '30 days'
   ORDER BY pei.expiry_date ASC;`,
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: Aaj kitne bills bane?
+        text: (s, d) => `Q: Aaj kitne bills bane?
 SQL:
   SELECT COUNT(*) AS bill_count
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE(invoice_date) = CURRENT_DATE;`,
+    AND DATE(invoice_date) = '${d}'::date;`,
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: Is hafte average bill amount
+        text: (s, d) => `Q: Is hafte average bill amount
 SQL:
   SELECT AVG(grand_total) AS avg_bill
   FROM invoices
   WHERE store_id = '${s}'
-    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', '${d}'::date)
     AND status IN ('PAID','PARTIAL');`,
     },
     {
         topics: ['customer'],
-        text: (s) => `Q: New customers this month
+        text: (s, d) => `Q: New customers this month
 SQL:
   SELECT COUNT(*) AS new_customers
   FROM customers
   WHERE store_id = '${s}'
-    AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE);`,
+    AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', '${d}'::date);`,
     },
     {
         topics: ['customer'],
@@ -332,12 +332,12 @@ SQL:
     },
     {
         topics: ['sales'],
-        text: (s) => `Q: Daily sales last 7 days
+        text: (s, d) => `Q: Daily sales last 7 days
 SQL:
   SELECT DATE(invoice_date) AS date, SUM(grand_total) AS daily_total, COUNT(*) AS bills
   FROM invoices
   WHERE store_id = '${s}'
-    AND invoice_date >= CURRENT_DATE - INTERVAL '7 days'
+    AND invoice_date >= '${d}'::date - INTERVAL '7 days'
     AND status IN ('PAID','PARTIAL')
   GROUP BY DATE(invoice_date)
   ORDER BY date DESC;`,
@@ -346,7 +346,7 @@ SQL:
 // ─────────────────────────────────────────────────────────────────
 // SECTION 4 — SQL RULES (always included)
 // ─────────────────────────────────────────────────────────────────
-function sqlRules(storeId) {
+function sqlRules(storeId, clientDate, timezone) {
     return `\
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SQL RULES — mandatory, never violate
@@ -356,12 +356,22 @@ SQL RULES — mandatory, never violate
 3. ALWAYS add LIMIT 100 unless the query returns a single aggregate row.
 4. GROUP BY rule: every non-aggregated SELECT column must be in GROUP BY.
    Violating this causes a PostgreSQL error.
-5. Date comparisons: use DATE(invoice_date) = CURRENT_DATE, not ::date cast.
+5. DATE RULES — critical:
+   - Today's date is '${clientDate}' (device local, ${timezone}).
+   - NEVER use CURRENT_DATE or NOW() — always use '${clientDate}'::date.
+   - today      → DATE(invoice_date) = '${clientDate}'::date
+   - yesterday  → DATE(invoice_date) = '${clientDate}'::date - 1
+   - this week  → DATE_TRUNC('week',  '${clientDate}'::date)
+   - last 7d    → invoice_date >= '${clientDate}'::date - INTERVAL '7 days'
+   - this month → DATE_TRUNC('month', '${clientDate}'::date)
+   - last month → DATE_TRUNC('month', '${clientDate}'::date - INTERVAL '1 month')
+   - this year  → DATE_TRUNC('year',  '${clientDate}'::date)
+   - last year  → DATE_TRUNC('year',  '${clientDate}'::date - INTERVAL '1 year')
+   - all-time / ab tak / total / overall → NO date filter, store_id only.
 6. status values are UPPERCASE: 'PAID', 'PARTIAL', 'DRAFT', 'CANCELLED'
 7. payment_mode values are UPPERCASE: 'CASH', 'UPI', 'CARD', 'CREDIT', 'CHEQUE'
-8. all-time / ab tak / total / overall / sab → NO date filter, store_id only.
-9. If the question is unrelated to store data, respond with exactly: NO_SQL
-10. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
+8. If the question is unrelated to store data, respond with exactly: NO_SQL
+9. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
 }
 // ─────────────────────────────────────────────────────────────────
 // SECTION 5 — TOPIC DETECTION
@@ -389,7 +399,7 @@ function detectTopics(message) {
 // ─────────────────────────────────────────────────────────────────
 // EXPORT 1 — buildFocusedContext  (smart, message-aware)
 // ─────────────────────────────────────────────────────────────────
-function buildFocusedContext(message, storeId) {
+function buildFocusedContext(message, storeId, clientDate = new Date().toISOString().slice(0, 10), timezone = 'Asia/Kolkata') {
     const topics = detectTopics(message);
     // ── Select relevant table schemas ─────────────────────────────
     const schemaParts = [];
@@ -436,7 +446,7 @@ function buildFocusedContext(message, storeId) {
     const relevant = EXAMPLES
         .filter((e) => e.topics.some((t) => topics.includes(t)))
         .slice(0, 5)
-        .map((e) => e.text(storeId))
+        .map((e) => e.text(storeId, clientDate))
         .join('\n\n');
     return [
         TABLE_NAMES_HEADER,
@@ -451,13 +461,13 @@ function buildFocusedContext(message, storeId) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
         relevant,
         '',
-        sqlRules(storeId),
+        sqlRules(storeId, clientDate, timezone),
     ].join('\n');
 }
 // ─────────────────────────────────────────────────────────────────
 // EXPORT 2 — buildSchemaContext  (full context, fallback)
 // ─────────────────────────────────────────────────────────────────
-function buildSchemaContext(storeId) {
+function buildSchemaContext(storeId, clientDate = new Date().toISOString().slice(0, 10), timezone = 'Asia/Kolkata') {
     const allSchemas = [
         schemaInvoices(storeId),
         SCHEMA_INVOICE_LINE_ITEMS,
@@ -469,7 +479,7 @@ function buildSchemaContext(storeId) {
         SCHEMA_PURCHASE_ENTRIES,
         SCHEMA_PURCHASE_ENTRY_ITEMS,
     ].join('\n\n');
-    const allExamples = EXAMPLES.map((e) => e.text(storeId)).join('\n\n');
+    const allExamples = EXAMPLES.map((e) => e.text(storeId, clientDate)).join('\n\n');
     return [
         TABLE_NAMES_HEADER,
         '',
@@ -485,7 +495,7 @@ function buildSchemaContext(storeId) {
         '',
         allExamples,
         '',
-        sqlRules(storeId),
+        sqlRules(storeId, clientDate, timezone),
     ].join('\n');
 }
 //# sourceMappingURL=schema-context.js.map

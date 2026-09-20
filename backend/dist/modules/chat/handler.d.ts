@@ -6,6 +6,8 @@ export declare function chat(request: FastifyRequest<{
     Body: {
         message: string;
         conversationId?: string;
+        clientDate?: string;
+        timezone?: string;
     };
 }>, reply: FastifyReply): Promise<never>;
 export declare function getChatHistory(request: FastifyRequest<{

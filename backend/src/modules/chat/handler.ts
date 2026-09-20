@@ -265,12 +265,26 @@ async function executeWithRetry(
 export async function chat(
   request: FastifyRequest<{
     Params:  { storeId: string };
-    Body:    { message: string; conversationId?: string };
+    Body:    {
+      message:         string;
+      conversationId?: string;
+      clientDate?:     string;   // YYYY-MM-DD from device local clock
+      timezone?:       string;   // IANA tz e.g. 'Asia/Kolkata'
+    };
   }>,
   reply: FastifyReply,
 ) {
   const { storeId } = request.params;
-  const { message, conversationId: incomingId } = request.body;
+  const {
+    message,
+    conversationId: incomingId,
+    clientDate:     rawDate,
+    timezone:       rawTz,
+  } = request.body;
+
+  // Use device-provided date/tz; fall back to server UTC
+  const clientDate = rawDate ?? new Date().toISOString().slice(0, 10);
+  const clientTz   = rawTz   ?? 'Asia/Kolkata';
 
   if (!message?.trim()) {
     return reply.status(400).send({
@@ -295,11 +309,11 @@ export async function chat(
     .join('\n');
 
   // buildFocusedContext sends only schemas + examples relevant to this message
-  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildFocusedContext(message, storeId)}`;
+  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildFocusedContext(message, storeId, clientDate, clientTz)}`;
 
   const sqlPrompt = recentHistory
-    ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
-    : `User question: ${message}`;
+    ? `Previous conversation:\n${recentHistory}\n\nToday is ${clientDate} (${clientTz}).\nUser question: ${message}`
+    : `Today is ${clientDate} (${clientTz}).\nUser question: ${message}`;
 
   let generatedSQL:  string | null                 = null;
   let sqlResult:     Record<string, unknown>[]      = [];
