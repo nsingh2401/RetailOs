@@ -86,7 +86,7 @@ async function ollamaGenerate(prompt, system, maxTokens = 512) {
             stream: false,
             options: { temperature: 0.05, num_predict: maxTokens },
         }),
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(200_000),
     });
     if (!resp.ok)
         throw new Error(`Ollama HTTP ${resp.status}`);
@@ -253,8 +253,8 @@ async function chat(request, reply) {
     const recentHistory = history.slice(-6)
         .map((h) => `${h.role}: ${h.content}`)
         .join('\n');
-    // buildSchemaContext injects storeId into every WHERE example and SQL rule
-    const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${(0, schema_context_1.buildSchemaContext)(storeId)}`;
+    // buildFocusedContext sends only schemas + examples relevant to this message
+    const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${(0, schema_context_1.buildFocusedContext)(message, storeId)}`;
     const sqlPrompt = recentHistory
         ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
         : `User question: ${message}`;

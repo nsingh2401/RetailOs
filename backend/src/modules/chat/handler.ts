@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import ExcelJS from 'exceljs';
-import { buildSchemaContext } from './schema-context';
+import { buildFocusedContext } from './schema-context';
 
 const OLLAMA_URL   = process.env.OLLAMA_URL         ?? 'http://localhost:11434';
 const CHAT_MODEL   = process.env.OLLAMA_CHAT_MODEL  ?? 'llama3.2';
@@ -99,7 +99,7 @@ async function ollamaGenerate(
       stream:  false,
       options: { temperature: 0.05, num_predict: maxTokens },
     }),
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(200_000),
   });
   if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
   const body = (await resp.json()) as { response?: string };
@@ -294,8 +294,8 @@ export async function chat(
     .map((h) => `${h.role}: ${h.content}`)
     .join('\n');
 
-  // buildSchemaContext injects storeId into every WHERE example and SQL rule
-  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildSchemaContext(storeId)}`;
+  // buildFocusedContext sends only schemas + examples relevant to this message
+  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildFocusedContext(message, storeId)}`;
 
   const sqlPrompt = recentHistory
     ? `Previous conversation:\n${recentHistory}\n\nUser question: ${message}`
