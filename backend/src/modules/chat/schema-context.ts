@@ -418,8 +418,16 @@ SQL RULES — mandatory, never violate
          AND i.status IN ('PAID','PARTIAL')
        GROUP BY c.name, c.phone
        ORDER BY total_spent DESC;
-9. If the question is unrelated to store data, respond with exactly: NO_SQL
-10. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
+9. DATE DISPLAY FORMAT RULE - critical:
+   - NEVER return raw timestamps like '2024-01-15T00:00:00.000Z' or '2024-01-15 00:00:00'.
+   - When SELECTing any date/datetime column for display, ALWAYS wrap with TO_CHAR:
+       invoice_date  → TO_CHAR(invoice_date  AT TIME ZONE '${timezone}', 'DD-Mon-YYYY') AS date
+       purchase_date → TO_CHAR(purchase_date AT TIME ZONE '${timezone}', 'DD-Mon-YYYY') AS date
+       created_at    → TO_CHAR(created_at    AT TIME ZONE '${timezone}', 'DD-Mon-YYYY HH24:MI') AS created_at
+       expiry_date   → TO_CHAR(expiry_date, 'DD-Mon-YYYY') AS expiry_date
+   - Exception: DATE() in WHERE clauses stays as-is — formatting only applies to SELECT output.
+10. If the question is unrelated to store data, respond with exactly: NO_SQL
+11. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
 }
 
 // ─────────────────────────────────────────────────────────────────
