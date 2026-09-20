@@ -297,15 +297,22 @@ export async function chat(
   const historyKey     = `chat:${storeId}:${conversationId}`;
 
   // ── Load conversation history from Redis ───────────────────
-  let history: { role: string; content: string }[] = [];
+  type HistoryEntry = { role: string; content: string; sql?: string; rowCount?: number };
+  let history: HistoryEntry[] = [];
   try {
     const raw = await redis.get(historyKey);
     if (raw) history = JSON.parse(raw) as typeof history;
   } catch { /* non-fatal */ }
 
   // ── Step 1 — SQL generation ────────────────────────────────
+  // Include prior SQL in assistant turns so model can adapt follow-up queries
   const recentHistory = history.slice(-6)
-    .map((h) => `${h.role}: ${h.content}`)
+    .map((h) => {
+      if (h.role === 'assistant' && h.sql) {
+        return `assistant: ${h.content}\n[SQL used: ${h.sql}] [rows: ${h.rowCount ?? 0}]`;
+      }
+      return `${h.role}: ${h.content}`;
+    })
     .join('\n');
 
   // buildFocusedContext sends only schemas + examples relevant to this message
@@ -456,8 +463,12 @@ like that. Do not use bullet points or dashes. Just plain sentences only.`;
     .trim();
 
   // ── Save updated history to Redis (keep last 20 msgs) ─────
-  history.push({ role: 'user',      content: message });
-  history.push({ role: 'assistant', content: cleanResponse });
+  history.push({ role: 'user', content: message });
+  history.push({
+    role:     'assistant',
+    content:  cleanResponse,
+    ...(generatedSQL ? { sql: generatedSQL, rowCount: sqlResult.length } : {}),
+  });
   if (history.length > 20) history = history.slice(-20);
 
   try {
