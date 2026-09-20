@@ -205,6 +205,17 @@ Match user intent (Hindi / English / Hinglish) to the correct filter:
   last month / pichle mahine / last month:
     WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
 
+  this year / is saal / is year:
+    WHERE DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE)
+
+  last year / pichle saal / last year:
+    WHERE DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1 year')
+
+  all time / ab tak / total / overall / sab / lifetime:
+    ← NO date filter. Use ONLY store_id = '${storeId}'. Do NOT add any WHERE date clause.
+    CRITICAL: When the user asks for totals, overall, or all-time data without
+    specifying a date range, omit the date condition entirely. Only filter by store_id.
+
 Worked examples:
 
 Yesterday's revenue:
@@ -258,6 +269,33 @@ This week's revenue:
   WHERE store_id = '${storeId}'
     AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
     AND status IN ('PAID','PARTIAL');
+
+This year's revenue:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE)
+    AND status IN ('PAID','PARTIAL');
+
+Last year's revenue:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1 year')
+    AND status IN ('PAID','PARTIAL');
+
+All-time total revenue (no date filter):
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND status IN ('PAID','PARTIAL');
+
+All-time top customers (no date filter):
+  SELECT name, phone, total_purchases, outstanding_balance
+  FROM customers
+  WHERE store_id = '${storeId}'
+  ORDER BY total_purchases DESC
+  LIMIT 10;
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SQL RULES — mandatory, never violate
