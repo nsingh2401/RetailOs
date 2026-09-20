@@ -183,6 +183,83 @@ Daily sales trend (last 30 days):
   LIMIT 30;
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATE RANGE MAPPINGS — use EXACTLY these WHERE clauses
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Match user intent (Hindi / English / Hinglish) to the correct filter:
+
+  today / aaj / aaj ka:
+    WHERE DATE(invoice_date) = CURRENT_DATE
+
+  yesterday / kal / kal ka:
+    WHERE DATE(invoice_date) = CURRENT_DATE - 1
+
+  this week / is hafte / is week:
+    WHERE DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+
+  last week / pichle hafte / last week ka:
+    WHERE invoice_date >= CURRENT_DATE - INTERVAL '7 days'
+
+  this month / is mahine / is month:
+    WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+
+  last month / pichle mahine / last month:
+    WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+
+Worked examples:
+
+Yesterday's revenue:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE(invoice_date) = CURRENT_DATE - 1
+    AND status IN ('PAID','PARTIAL');
+
+This week's top products:
+  SELECT p.name, SUM(ili.quantity) AS units_sold, SUM(ili.line_total) AS revenue
+  FROM invoice_line_items ili
+  JOIN product_variants pv ON pv.variant_id = ili.variant_id
+  JOIN products p           ON p.product_id  = pv.product_id
+  JOIN invoices i           ON i.invoice_id  = ili.invoice_id
+  WHERE i.store_id = '${storeId}'
+    AND i.status IN ('PAID','PARTIAL')
+    AND DATE_TRUNC('week', i.invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+  GROUP BY p.product_id, p.name
+  ORDER BY units_sold DESC
+  LIMIT 10;
+
+Last month's revenue:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+    AND status IN ('PAID','PARTIAL');
+
+This month's GST:
+  SELECT SUM(ili.taxable_amount) AS taxable_value,
+         SUM(ili.tax_amount)     AS gst_collected
+  FROM invoice_line_items ili
+  JOIN invoices i ON i.invoice_id = ili.invoice_id
+  WHERE i.store_id = '${storeId}'
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+    AND i.status IN ('PAID','PARTIAL');
+
+Last 7 days sales by day:
+  SELECT DATE(invoice_date) AS sale_date, SUM(grand_total) AS total
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND status IN ('PAID','PARTIAL')
+    AND invoice_date >= CURRENT_DATE - INTERVAL '7 days'
+  GROUP BY DATE(invoice_date)
+  ORDER BY sale_date DESC;
+
+This week's revenue:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+    AND status IN ('PAID','PARTIAL');
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SQL RULES — mandatory, never violate
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. ALWAYS filter WHERE store_id = '${storeId}' — never query without it.
