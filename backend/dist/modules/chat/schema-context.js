@@ -122,38 +122,58 @@ TABLE purchase_entry_items  (line items inside each purchase entry)
   expiry_date      date         nullable
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-COMMON QUERY PATTERNS — follow these exactly
+FEW-SHOT EXAMPLES — Q → SQL (Hindi / English / Hinglish)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use these as reference patterns. Match date intent carefully.
+CRITICAL — all-time/total/ab-tak: NO date filter, store_id only.
 
-Today's sales:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+Q: Aaj kitni sale hui?
+SQL:
+  SELECT SUM(grand_total) AS total_sale, COUNT(*) AS invoice_count
   FROM invoices
   WHERE store_id = '${storeId}'
     AND DATE(invoice_date) = CURRENT_DATE
     AND status IN ('PAID','PARTIAL');
 
-Top products this week:
-  SELECT p.name, SUM(ili.quantity) AS units_sold, SUM(ili.line_total) AS revenue
+Q: Ab tak ki total sale
+SQL:
+  SELECT SUM(grand_total) AS total_sale, COUNT(*) AS total_invoices
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND status IN ('PAID','PARTIAL');
+
+Q: Pichle hafte top 5 products
+SQL:
+  SELECT p.name, SUM(ili.quantity) AS units_sold
   FROM invoice_line_items ili
   JOIN product_variants pv ON pv.variant_id = ili.variant_id
   JOIN products p           ON p.product_id  = pv.product_id
   JOIN invoices i           ON i.invoice_id  = ili.invoice_id
   WHERE i.store_id = '${storeId}'
-    AND i.status IN ('PAID','PARTIAL')
     AND i.invoice_date >= CURRENT_DATE - INTERVAL '7 days'
-  GROUP BY p.product_id, p.name
+    AND i.status IN ('PAID','PARTIAL')
+  GROUP BY p.name
   ORDER BY units_sold DESC
-  LIMIT 10;
+  LIMIT 5;
 
-Pending credit (outstanding customers):
-  SELECT name, phone, outstanding_balance
+Q: Is mahine GST kitna hua?
+SQL:
+  SELECT SUM(ili.taxable_amount) AS taxable, SUM(ili.tax_amount) AS gst_collected
+  FROM invoice_line_items ili
+  JOIN invoices i ON i.invoice_id = ili.invoice_id
+  WHERE i.store_id = '${storeId}'
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
+    AND i.status IN ('PAID','PARTIAL');
+
+Q: Kitne customers ka credit pending hai?
+SQL:
+  SELECT COUNT(*) AS customer_count, SUM(outstanding_balance) AS total_pending
   FROM customers
   WHERE store_id = '${storeId}'
-    AND outstanding_balance > 0
-  ORDER BY outstanding_balance DESC
-  LIMIT 100;
+    AND outstanding_balance > 0;
 
-Low stock alert:
+Q: Low stock products dikhao
+SQL:
   SELECT p.name, pv.variant_sku, i.quantity
   FROM inventory i
   JOIN product_variants pv ON pv.variant_id = i.variant_id
@@ -161,141 +181,139 @@ Low stock alert:
   WHERE i.store_id = '${storeId}'
     AND i.quantity < 10
   ORDER BY i.quantity ASC
-  LIMIT 100;
+  LIMIT 20;
 
-Monthly GST summary:
-  SELECT SUM(ili.taxable_amount) AS taxable_value,
-         SUM(ili.tax_amount)     AS gst_collected
-  FROM invoice_line_items ili
-  JOIN invoices i ON i.invoice_id = ili.invoice_id
-  WHERE i.store_id = '${storeId}'
-    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
-    AND i.status IN ('PAID','PARTIAL');
-
-Daily sales trend (last 30 days):
-  SELECT DATE(invoice_date) AS sale_date, SUM(grand_total) AS total
-  FROM invoices
-  WHERE store_id = '${storeId}'
-    AND status IN ('PAID','PARTIAL')
-    AND invoice_date >= CURRENT_DATE - INTERVAL '30 days'
-  GROUP BY DATE(invoice_date)
-  ORDER BY sale_date DESC
-  LIMIT 30;
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DATE RANGE MAPPINGS — use EXACTLY these WHERE clauses
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Match user intent (Hindi / English / Hinglish) to the correct filter:
-
-  today / aaj / aaj ka:
-    WHERE DATE(invoice_date) = CURRENT_DATE
-
-  yesterday / kal / kal ka:
-    WHERE DATE(invoice_date) = CURRENT_DATE - 1
-
-  this week / is hafte / is week:
-    WHERE DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
-
-  last week / pichle hafte / last week ka:
-    WHERE invoice_date >= CURRENT_DATE - INTERVAL '7 days'
-
-  this month / is mahine / is month:
-    WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
-
-  last month / pichle mahine / last month:
-    WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
-
-  this year / is saal / is year:
-    WHERE DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE)
-
-  last year / pichle saal / last year:
-    WHERE DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1 year')
-
-  all time / ab tak / total / overall / sab / lifetime:
-    ← NO date filter. Use ONLY store_id = '${storeId}'. Do NOT add any WHERE date clause.
-    CRITICAL: When the user asks for totals, overall, or all-time data without
-    specifying a date range, omit the date condition entirely. Only filter by store_id.
-
-Worked examples:
-
-Yesterday's revenue:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+Q: Yesterday sales
+SQL:
+  SELECT SUM(grand_total) AS total, COUNT(*) AS invoices
   FROM invoices
   WHERE store_id = '${storeId}'
     AND DATE(invoice_date) = CURRENT_DATE - 1
     AND status IN ('PAID','PARTIAL');
 
-This week's top products:
-  SELECT p.name, SUM(ili.quantity) AS units_sold, SUM(ili.line_total) AS revenue
+Q: This week cash vs UPI collection
+SQL:
+  SELECT payment_mode, SUM(grand_total) AS total
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
+    AND status IN ('PAID','PARTIAL')
+  GROUP BY payment_mode;
+
+Q: Pichle 30 din mein kaunsa customer sabse zyada aaya?
+SQL:
+  SELECT c.name, COUNT(i.invoice_id) AS visit_count, SUM(i.grand_total) AS total_spent
+  FROM invoices i
+  JOIN customers c ON c.customer_id = i.customer_id
+  WHERE i.store_id = '${storeId}'
+    AND i.invoice_date >= CURRENT_DATE - INTERVAL '30 days'
+    AND i.status IN ('PAID','PARTIAL')
+  GROUP BY c.name
+  ORDER BY visit_count DESC
+  LIMIT 10;
+
+Q: Is saal ki total purchase kitni hai?
+SQL:
+  SELECT SUM(total_amount) AS total_purchase
+  FROM purchase_entries
+  WHERE store_id = '${storeId}'
+    AND DATE_TRUNC('year', purchase_date) = DATE_TRUNC('year', CURRENT_DATE);
+
+Q: Which category sold most this month?
+SQL:
+  SELECT cat.name, SUM(ili.line_total) AS revenue
   FROM invoice_line_items ili
   JOIN product_variants pv ON pv.variant_id = ili.variant_id
   JOIN products p           ON p.product_id  = pv.product_id
+  JOIN categories cat       ON cat.category_id = p.category_id
   JOIN invoices i           ON i.invoice_id  = ili.invoice_id
   WHERE i.store_id = '${storeId}'
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
     AND i.status IN ('PAID','PARTIAL')
-    AND DATE_TRUNC('week', i.invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
-  GROUP BY p.product_id, p.name
-  ORDER BY units_sold DESC
-  LIMIT 10;
+  GROUP BY cat.name
+  ORDER BY revenue DESC
+  LIMIT 5;
 
-Last month's revenue:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+Q: Aaj UPI se kitna aaya?
+SQL:
+  SELECT SUM(grand_total) AS upi_collection
   FROM invoices
   WHERE store_id = '${storeId}'
-    AND DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+    AND DATE(invoice_date) = CURRENT_DATE
+    AND payment_mode = 'UPI'
     AND status IN ('PAID','PARTIAL');
 
-This month's GST:
-  SELECT SUM(ili.taxable_amount) AS taxable_value,
-         SUM(ili.tax_amount)     AS gst_collected
-  FROM invoice_line_items ili
-  JOIN invoices i ON i.invoice_id = ili.invoice_id
-  WHERE i.store_id = '${storeId}'
-    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)
-    AND i.status IN ('PAID','PARTIAL');
+Q: Stock value kitni hai abhi?
+SQL:
+  SELECT SUM(p.selling_price * i.quantity) AS stock_value
+  FROM inventory i
+  JOIN product_variants pv ON pv.variant_id = i.variant_id
+  JOIN products p           ON p.product_id  = pv.product_id
+  WHERE i.store_id = '${storeId}';
 
-Last 7 days sales by day:
-  SELECT DATE(invoice_date) AS sale_date, SUM(grand_total) AS total
+Q: Last month top customer
+SQL:
+  SELECT c.name, SUM(i.grand_total) AS total_spent
+  FROM invoices i
+  JOIN customers c ON c.customer_id = i.customer_id
+  WHERE i.store_id = '${storeId}'
+    AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+    AND i.status IN ('PAID','PARTIAL')
+  GROUP BY c.name
+  ORDER BY total_spent DESC
+  LIMIT 5;
+
+Q: Expiry wale products dikhao
+SQL:
+  SELECT p.name, pv.variant_sku, pei.expiry_date
+  FROM purchase_entry_items pei
+  JOIN product_variants pv ON pv.variant_id  = pei.variant_id
+  JOIN products p           ON p.product_id   = pv.product_id
+  JOIN purchase_entries pe  ON pe.purchase_id = pei.purchase_id
+  WHERE pe.store_id = '${storeId}'
+    AND pei.expiry_date IS NOT NULL
+    AND pei.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
+  ORDER BY pei.expiry_date ASC;
+
+Q: Aaj kitne bills bane?
+SQL:
+  SELECT COUNT(*) AS bill_count
   FROM invoices
   WHERE store_id = '${storeId}'
-    AND status IN ('PAID','PARTIAL')
-    AND invoice_date >= CURRENT_DATE - INTERVAL '7 days'
-  GROUP BY DATE(invoice_date)
-  ORDER BY sale_date DESC;
+    AND DATE(invoice_date) = CURRENT_DATE;
 
-This week's revenue:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
+Q: Is hafte average bill amount
+SQL:
+  SELECT AVG(grand_total) AS avg_bill
   FROM invoices
   WHERE store_id = '${storeId}'
     AND DATE_TRUNC('week', invoice_date) = DATE_TRUNC('week', CURRENT_DATE)
     AND status IN ('PAID','PARTIAL');
 
-This year's revenue:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
-  FROM invoices
-  WHERE store_id = '${storeId}'
-    AND DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE)
-    AND status IN ('PAID','PARTIAL');
-
-Last year's revenue:
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
-  FROM invoices
-  WHERE store_id = '${storeId}'
-    AND DATE_TRUNC('year', invoice_date) = DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1 year')
-    AND status IN ('PAID','PARTIAL');
-
-All-time total revenue (no date filter):
-  SELECT SUM(grand_total) AS total, COUNT(*) AS invoice_count
-  FROM invoices
-  WHERE store_id = '${storeId}'
-    AND status IN ('PAID','PARTIAL');
-
-All-time top customers (no date filter):
-  SELECT name, phone, total_purchases, outstanding_balance
+Q: New customers this month
+SQL:
+  SELECT COUNT(*) AS new_customers
   FROM customers
   WHERE store_id = '${storeId}'
-  ORDER BY total_purchases DESC
-  LIMIT 10;
+    AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE);
+
+Q: Sabse zyada credit wala customer
+SQL:
+  SELECT name, phone, outstanding_balance
+  FROM customers
+  WHERE store_id = '${storeId}'
+  ORDER BY outstanding_balance DESC
+  LIMIT 5;
+
+Q: Daily sales last 7 days
+SQL:
+  SELECT DATE(invoice_date) AS date, SUM(grand_total) AS daily_total, COUNT(*) AS bills
+  FROM invoices
+  WHERE store_id = '${storeId}'
+    AND invoice_date >= CURRENT_DATE - INTERVAL '7 days'
+    AND status IN ('PAID','PARTIAL')
+  GROUP BY DATE(invoice_date)
+  ORDER BY date DESC;
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SQL RULES — mandatory, never violate
