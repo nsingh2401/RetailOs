@@ -342,6 +342,20 @@ SQL:
   GROUP BY DATE(invoice_date)
   ORDER BY date DESC;`,
     },
+    {
+        // CUSTOMER JOIN pattern — teaches model to never return raw customer_id UUID
+        topics: ['customer', 'sales'],
+        text: (s, d) => `Q: Kal kaun se customers aaye?
+SQL:
+  SELECT DISTINCT c.name, c.phone, SUM(i.grand_total) AS total_spent
+  FROM invoices i
+  JOIN customers c ON c.customer_id = i.customer_id
+  WHERE i.store_id = '${s}'
+    AND DATE(i.invoice_date) = '${d}'::date - 1
+    AND i.status IN ('PAID','PARTIAL')
+  GROUP BY c.name, c.phone
+  ORDER BY total_spent DESC;`,
+    },
 ];
 // ─────────────────────────────────────────────────────────────────
 // SECTION 4 — SQL RULES (always included)
@@ -370,8 +384,22 @@ SQL RULES — mandatory, never violate
    - all-time / ab tak / total / overall → NO date filter, store_id only.
 6. status values are UPPERCASE: 'PAID', 'PARTIAL', 'DRAFT', 'CANCELLED'
 7. payment_mode values are UPPERCASE: 'CASH', 'UPI', 'CARD', 'CREDIT', 'CHEQUE'
-8. If the question is unrelated to store data, respond with exactly: NO_SQL
-9. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
+8. CUSTOMER JOIN RULE - critical:
+   - NEVER return raw customer_id UUID from invoices.
+   - When query needs customer name or phone from invoices, ALWAYS JOIN customers:
+       JOIN customers c ON c.customer_id = i.customer_id
+     Then SELECT c.name, c.phone - NOT i.customer_id.
+   - Example (customers who bought yesterday):
+       SELECT DISTINCT c.name, c.phone, SUM(i.grand_total) AS total_spent
+       FROM invoices i
+       JOIN customers c ON c.customer_id = i.customer_id
+       WHERE i.store_id = '${storeId}'
+         AND DATE(i.invoice_date) = '${clientDate}'::date - 1
+         AND i.status IN ('PAID','PARTIAL')
+       GROUP BY c.name, c.phone
+       ORDER BY total_spent DESC;
+9. If the question is unrelated to store data, respond with exactly: NO_SQL
+10. Reply with ONLY the SQL in a \`\`\`sql block, or exactly NO_SQL.`;
 }
 // ─────────────────────────────────────────────────────────────────
 // SECTION 5 — TOPIC DETECTION

@@ -382,7 +382,10 @@ CRITICAL: Do NOT write "Key facts", "Key points", "Key Facts:", or any section h
 like that. Do not use bullet points or dashes. Just plain sentences only.`;
     // Explicitly tell the model when results are empty so it doesn't hallucinate
     const dataNote = sqlResult.length > 0
-        ? `\n\nQuery returned ${sqlResult.length} row(s):\n${JSON.stringify(sqlResult.slice(0, 20), null, 2)}`
+        // ⚠️ DATA IS PRESENT — model must describe it, NEVER invoke EMPTY RESULTS RULE
+        ? `\n\n[DATA IS PRESENT — ${sqlResult.length} row(s) returned. You MUST summarise this data. ` +
+            `NEVER say "no data found" or apply the EMPTY RESULTS RULE. Data is below:]\n` +
+            JSON.stringify(sqlResult.slice(0, 20), null, 2)
         : sqlError
             ? `\n\n[DATA ERROR: ${sqlError}]\nDo NOT guess data. Briefly apologise and say to try again.`
             : `\n\n[EMPTY RESULT: The query ran successfully but returned 0 rows.]\nApply the EMPTY RESULTS RULE above.`;
