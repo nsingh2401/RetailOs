@@ -22,6 +22,13 @@ const EXCEL_INTENT_RE = /excel|download|export|sheet|file\s+chahiye|nikalo|bhejo
 function detectExcelIntent(message) {
     return EXCEL_INTENT_RE.test(message);
 }
+// ── "Same data" Excel intent — re-use previous SQL from history ──
+// Fired when user asks for Excel of the data already shown in the
+// conversation (no need to re-generate SQL).
+const SAME_DATA_RE = /\b(is(?:\s+hi)?|isi|same|yahi?|iski?|wahi?|previous|pichla|pichle)\b.*\b(data|result|excel|file|sheet)\b|\b(excel|export|download)\b.*\b(is(?:\s+hi)?|isi|same|yahi?|iski?|wahi?)\b|is\s+data\s+ka\s+excel|same\s+data\s+(ka\s+)?excel|yahi\s+data\s+excel/i;
+function detectSameDataExcelIntent(message) {
+    return EXCEL_INTENT_RE.test(message) && SAME_DATA_RE.test(message);
+}
 // ── Generate Excel file from SQL result rows ───────────────────
 async function generateExcel(rows, question, storeId) {
     // Sheet name: first 3 words of question, sanitised
@@ -263,37 +270,60 @@ async function chat(request, reply) {
         .join('\n');
     // buildFocusedContext sends only schemas + examples relevant to this message
     const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${(0, schema_context_1.buildFocusedContext)(message, storeId, clientDate, clientTz)}`;
-    const sqlPrompt = recentHistory
-        ? `Previous conversation:\n${recentHistory}\n\nToday is ${clientDate} (${clientTz}).\nUser question: ${message}`
-        : `Today is ${clientDate} (${clientTz}).\nUser question: ${message}`;
     let generatedSQL = null;
     let sqlResult = [];
     let sqlError = null;
-    try {
-        const sqlResp = await ollamaGenerate(sqlPrompt, sqlSystem, 400);
-        if (!sqlResp.includes('NO_SQL')) {
-            const extracted = extractSQL(sqlResp);
-            if (extracted) {
-                generatedSQL = sanitizeSQL(extracted);
-                // ── Step 2 — Execute SQL (with auto-retry) ──────────
-                if (generatedSQL) {
-                    const result = await executeWithRetry(generatedSQL, storeId, sqlSystem, request.log);
-                    generatedSQL = result.finalSQL; // may be the fixed SQL
-                    sqlError = result.sqlError;
-                    // Treat boolean/trivial results as empty — model hallucinated
-                    if (isInvalidResult(result.rows)) {
-                        request.log.warn({ rows: result.rows }, 'Invalid/boolean SQL result — treating as empty');
-                        sqlResult = [];
-                    }
-                    else {
-                        sqlResult = result.rows;
+    let reusingPrevSQL = false;
+    // ── Same-data Excel short-circuit ─────────────────────────
+    // "Is data ka excel do" / "same data export" / "yahi data download"
+    // → find most recent assistant turn with SQL, re-execute it
+    if (detectSameDataExcelIntent(message)) {
+        const lastWithSQL = [...history].reverse().find((h) => h.role === 'assistant' && h.sql);
+        if (lastWithSQL?.sql) {
+            request.log.info({ sql: lastWithSQL.sql }, 'Same-data Excel: re-executing previous SQL');
+            reusingPrevSQL = true;
+            try {
+                const rows = await prisma_1.prisma.$queryRawUnsafe(lastWithSQL.sql);
+                sqlResult = serializeRows(rows);
+                generatedSQL = lastWithSQL.sql;
+            }
+            catch (err) {
+                sqlError = err.message ?? 'Previous SQL re-execution failed';
+                request.log.warn({ err }, 'Same-data Excel: re-execution failed');
+            }
+        }
+    }
+    // ── Normal SQL generation (skipped when reusing prev SQL) ──
+    if (!reusingPrevSQL) {
+        const sqlPrompt = recentHistory
+            ? `Previous conversation:\n${recentHistory}\n\nToday is ${clientDate} (${clientTz}).\nUser question: ${message}`
+            : `Today is ${clientDate} (${clientTz}).\nUser question: ${message}`;
+        try {
+            const sqlResp = await ollamaGenerate(sqlPrompt, sqlSystem, 400);
+            if (!sqlResp.includes('NO_SQL')) {
+                const extracted = extractSQL(sqlResp);
+                if (extracted) {
+                    generatedSQL = sanitizeSQL(extracted);
+                    // ── Step 2 — Execute SQL (with auto-retry) ────────
+                    if (generatedSQL) {
+                        const result = await executeWithRetry(generatedSQL, storeId, sqlSystem, request.log);
+                        generatedSQL = result.finalSQL; // may be the fixed SQL
+                        sqlError = result.sqlError;
+                        // Treat boolean/trivial results as empty — model hallucinated
+                        if (isInvalidResult(result.rows)) {
+                            request.log.warn({ rows: result.rows }, 'Invalid/boolean SQL result — treating as empty');
+                            sqlResult = [];
+                        }
+                        else {
+                            sqlResult = result.rows;
+                        }
                     }
                 }
             }
         }
-    }
-    catch (err) {
-        request.log.warn({ err }, 'Ollama SQL generation failed');
+        catch (err) {
+            request.log.warn({ err }, 'Ollama SQL generation failed');
+        }
     }
     // ── Step 3 — Excel export (short-circuit if intent detected) ─
     const wantsExcel = detectExcelIntent(message);
