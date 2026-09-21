@@ -5,6 +5,7 @@ exports.getLowStock = getLowStock;
 exports.getVariantStock = getVariantStock;
 exports.adjustStock = adjustStock;
 exports.getMovementHistory = getMovementHistory;
+exports.scanVendorBill = scanVendorBill;
 exports.createPurchase = createPurchase;
 exports.getPurchaseHistory = getPurchaseHistory;
 exports.getPurchaseDetail = getPurchaseDetail;
@@ -12,6 +13,7 @@ exports.getExpiringBatches = getExpiringBatches;
 exports.getVariantBatches = getVariantBatches;
 const prisma_1 = require("../../lib/prisma");
 const redis_1 = require("../../lib/redis");
+const typesense_1 = require("../../lib/typesense");
 const schema_1 = require("./schema");
 // ── Helpers ────────────────────────────────────────────────────
 function isManager(role) {
@@ -253,6 +255,194 @@ async function getMovementHistory(request, reply) {
     });
 }
 // ── Purchase handlers ──────────────────────────────────────────
+// POST /:storeId/purchases/scan-bill
+// Accepts a multipart vendor bill image → LLaVA OCR → per-item
+// product match → returns structured bill + matched products.
+async function scanVendorBill(request, reply) {
+    const storeId = request.storeId;
+    const MOONDREAM_URL = process.env.MOONDREAM_SERVER_URL ?? 'http://localhost:8001';
+    // ── 1. Read uploaded image ──────────────────────────────────
+    const data = await request.file();
+    if (!data) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'Image file required', statusCode: 400 },
+        });
+    }
+    const chunks = [];
+    for await (const chunk of data.file)
+        chunks.push(chunk);
+    const fileBuffer = Buffer.concat(chunks);
+    if (fileBuffer.length === 0) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'Empty file received', statusCode: 400 },
+        });
+    }
+    // ── 2. Send to LLaVA with bill-specific prompt ──────────────
+    const BILL_PROMPT = `You are analyzing an Indian vendor/supplier bill or invoice. Extract ALL line items and return ONLY a JSON object with these fields:
+{
+  "vendor_name": "string",
+  "bill_date": "YYYY-MM-DD or empty string",
+  "bill_number": "string",
+  "items": [
+    {
+      "name": "string",
+      "quantity": 1,
+      "unit": "string",
+      "rate": 0,
+      "amount": 0,
+      "batch_number": null,
+      "expiry_date": null,
+      "factory_code": null,
+      "gst_rate": null,
+      "hsn_code": null
+    }
+  ],
+  "total_amount": 0,
+  "gst_total": null
+}
+Return ONLY the JSON, no other text.`;
+    let billData;
+    try {
+        const formData = new FormData();
+        const blob = new Blob([fileBuffer], { type: data.mimetype ?? 'image/jpeg' });
+        formData.append('file', blob, data.filename ?? 'bill.jpg');
+        formData.append('prompt', BILL_PROMPT);
+        const resp = await fetch(`${MOONDREAM_URL}/analyze`, {
+            method: 'POST',
+            body: formData,
+            signal: AbortSignal.timeout(180_000),
+        });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error(`LLaVA HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+        }
+        // LLaVA returns { result: string } where result is the JSON text
+        const raw = (await resp.json());
+        const text = raw['result'] ?? JSON.stringify(raw);
+        // Extract JSON from the response (strip markdown code fences if any)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch)
+            throw new Error('No JSON found in LLaVA response');
+        billData = JSON.parse(jsonMatch[0]);
+    }
+    catch (err) {
+        request.log.warn({ err }, 'LLaVA bill scan failed');
+        return reply.status(503).send({
+            success: false,
+            error: {
+                code: 'AI_SERVICE_UNAVAILABLE',
+                message: 'AI bill scan service is offline. Run scripts/ai/start_ai_server.bat first.',
+                statusCode: 503,
+            },
+        });
+    }
+    // ── 3. Per-item product matching ────────────────────────────
+    const rawItems = billData['items'] ?? [];
+    const enrichedItems = await Promise.all(rawItems.map(async (rawItem) => {
+        const item = rawItem;
+        const name = String(item['name'] ?? '').trim();
+        let matchedProduct = null;
+        if (name.length >= 2) {
+            try {
+                // Try Typesense first (fast fuzzy search)
+                const hits = await (0, typesense_1.searchProducts)(storeId, name, 3);
+                if (hits.length > 0) {
+                    const topHit = hits[0];
+                    // Typesense text_match is a score; threshold ~0.7 means first hit
+                    const doc = topHit.document;
+                    // Get current stock for the variant
+                    const variant = await prisma_1.prisma.productVariant.findFirst({
+                        where: { productId: doc['productId'], isActive: true },
+                        select: { variantId: true },
+                    });
+                    const inv = variant
+                        ? await prisma_1.prisma.inventory.findFirst({
+                            where: { variantId: variant.variantId, storeId },
+                            select: { quantity: true },
+                        })
+                        : null;
+                    matchedProduct = {
+                        productId: doc['productId'],
+                        variantId: variant?.variantId ?? null,
+                        name: doc['name'],
+                        internalSku: doc['internalSku'],
+                        sellingPrice: doc['sellingPrice'],
+                        existingStock: inv ? Number(inv.quantity) : 0,
+                        matchConfidence: Number((topHit.text_match_info?.score ?? 0.8)),
+                    };
+                }
+            }
+            catch {
+                // Typesense unavailable — fallback to Prisma ILIKE
+                try {
+                    const prod = await prisma_1.prisma.product.findFirst({
+                        where: {
+                            storeId,
+                            name: { contains: name, mode: 'insensitive' },
+                            isActive: true,
+                        },
+                        include: {
+                            variants: {
+                                where: { isActive: true },
+                                take: 1,
+                                select: { variantId: true },
+                            },
+                        },
+                    });
+                    if (prod) {
+                        const variantId = prod.variants[0]?.variantId ?? null;
+                        const inv = variantId
+                            ? await prisma_1.prisma.inventory.findFirst({
+                                where: { variantId, storeId },
+                                select: { quantity: true },
+                            })
+                            : null;
+                        matchedProduct = {
+                            productId: prod.productId,
+                            variantId,
+                            name: prod.name,
+                            internalSku: prod.internalSku,
+                            sellingPrice: Number(prod.sellingPrice),
+                            existingStock: inv ? Number(inv.quantity) : 0,
+                            matchConfidence: 0.75,
+                        };
+                    }
+                }
+                catch {
+                    // Match failed — return null, user will create manually
+                }
+            }
+        }
+        return {
+            name: name,
+            quantity: Number(item['quantity'] ?? 1),
+            unit: String(item['unit'] ?? 'PCS'),
+            rate: Number(item['rate'] ?? 0),
+            amount: Number(item['amount'] ?? 0),
+            batchNumber: item['batch_number'] ?? null,
+            expiryDate: item['expiry_date'] ?? null,
+            factoryCode: item['factory_code'] ?? null,
+            gstRate: item['gst_rate'] != null ? Number(item['gst_rate']) : null,
+            hsnCode: item['hsn_code'] ?? null,
+            matchedProduct,
+        };
+    }));
+    // ── 4. Return enriched bill ──────────────────────────────────
+    return reply.send({
+        success: true,
+        data: {
+            vendorName: String(billData['vendor_name'] ?? ''),
+            billDate: String(billData['bill_date'] ?? ''),
+            billNumber: String(billData['bill_number'] ?? ''),
+            totalAmount: Number(billData['total_amount'] ?? 0),
+            gstTotal: billData['gst_total'] != null
+                ? Number(billData['gst_total']) : null,
+            items: enrichedItems,
+        },
+    });
+}
 // POST /:storeId/purchases
 async function createPurchase(request, reply) {
     const storeId = request.storeId;

@@ -29,6 +29,11 @@ export declare function getMovementHistory(request: FastifyRequest<{
     };
     Querystring: Record<string, unknown>;
 }>, reply: FastifyReply): Promise<never>;
+export declare function scanVendorBill(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 export declare function createPurchase(request: FastifyRequest<{
     Params: {
         storeId: string;

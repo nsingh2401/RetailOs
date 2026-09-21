@@ -504,6 +504,7 @@ model Product {
   hasVariants       Boolean       @default(false) @map("has_variants")
   hasBatches        Boolean       @default(false) @map("has_batches")
   lowStockThreshold Int?          @map("low_stock_threshold")
+  factoryCode       String?       @db.VarChar(100) @map("factory_code")
   isActive          Boolean       @default(true) @map("is_active")
   imageUrl          String?       @db.VarChar(500) @map("image_url")
   aiMetadata        Json          @default("{}") @db.JsonB @map("ai_metadata")
@@ -667,13 +668,15 @@ model PurchaseEntry {
 
 // 3.5 purchase_entry_items
 model PurchaseEntryItem {
-  itemId     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("item_id")
-  purchaseId String  @db.Uuid @map("purchase_id")
-  variantId  String  @db.Uuid @map("variant_id")
-  batchId    String? @db.Uuid @map("batch_id")
-  quantity   Decimal @db.Decimal(15, 4)
-  unitCost   Decimal @db.Decimal(15, 4) @map("unit_cost")
-  totalCost  Decimal @db.Decimal(15, 4) @map("total_cost")
+  itemId       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("item_id")
+  purchaseId   String  @db.Uuid @map("purchase_id")
+  variantId    String  @db.Uuid @map("variant_id")
+  batchId      String? @db.Uuid @map("batch_id")
+  batchNumber  String? @db.VarChar(100) @map("batch_number")
+  factoryCode  String? @db.VarChar(100) @map("factory_code")
+  quantity     Decimal @db.Decimal(15, 4)
+  unitCost     Decimal @db.Decimal(15, 4) @map("unit_cost")
+  totalCost    Decimal @db.Decimal(15, 4) @map("total_cost")
 
   purchaseEntry PurchaseEntry  @relation(fields: [purchaseId], references: [purchaseId])
   variant       ProductVariant @relation(fields: [variantId], references: [variantId])

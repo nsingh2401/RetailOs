@@ -107,12 +107,12 @@ export declare const RecordPaymentSchema: z.ZodObject<{
     referenceNo: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     currencyCode: string;
-    paymentMethod: "CASH" | "UPI" | "CREDIT" | "CARD" | "CHEQUE" | "OTHER";
     amount: number;
+    paymentMethod: "CASH" | "UPI" | "CREDIT" | "CARD" | "CHEQUE" | "OTHER";
     referenceNo?: string | undefined;
 }, {
-    paymentMethod: "CASH" | "UPI" | "CREDIT" | "CARD" | "CHEQUE" | "OTHER";
     amount: number;
+    paymentMethod: "CASH" | "UPI" | "CREDIT" | "CARD" | "CHEQUE" | "OTHER";
     currencyCode?: string | undefined;
     referenceNo?: string | undefined;
 }>;

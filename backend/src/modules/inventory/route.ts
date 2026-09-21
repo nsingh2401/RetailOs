@@ -18,6 +18,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   app.get( '/:storeId/inventory/:variantId/movements',   { preHandler: pre }, handler.getMovementHistory);
 
   // Purchases
+  app.post('/:storeId/purchases/scan-bill',              { preHandler: pre }, handler.scanVendorBill);
   app.post('/:storeId/purchases',                        { preHandler: pre }, handler.createPurchase);
   app.get( '/:storeId/purchases',                        { preHandler: pre }, handler.getPurchaseHistory);
   app.get( '/:storeId/purchases/:purchaseId',            { preHandler: pre }, handler.getPurchaseDetail);
