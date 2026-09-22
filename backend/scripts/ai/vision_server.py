@@ -61,36 +61,23 @@ PRODUCT_PROMPT = (
 )
 
 BILL_OCR_PROMPT = """\
-You are a bill parsing assistant for an Indian retail POS system.
-The following text was extracted via OCR from a vendor/supplier invoice or bill.
-Parse it and return ONLY a valid JSON object — no explanation, no markdown, no extra text:
-{{
-  "vendor_name": "string",
-  "bill_number": "string",
-  "bill_date": "YYYY-MM-DD or empty string",
-  "items": [
-    {{
-      "name": "string",
-      "hsn_code": "string or null",
-      "quantity": 0,
-      "unit": "string",
-      "rate": 0,
-      "discount": null,
-      "gst_rate": null,
-      "amount": 0,
-      "batch_number": null,
-      "expiry_date": null
-    }}
-  ],
-  "subtotal": null,
-  "gst_total": null,
-  "total_amount": 0
-}}
+You are a bill/invoice parser. The OCR text below is from an Indian vendor bill.
+
+IMPORTANT RULES:
+1. Find the items TABLE in the bill — it has column headers like: Item/Description, HSN/SAC, Batch, Expiry/Exp Date, Qty/Quantity, Rate/Price, Tax%, Amount
+2. Extract ONLY the data rows from the table — NOT the vendor header, company name, address, or footer text
+3. Map columns correctly: Items/Description column -> name, HSN column -> hsn_code, Batch column -> batch_number, Exp Date column -> expiry_date, Qty/Quantity column -> quantity, Rate column -> rate, Tax% column -> gst_rate, Amount column -> amount
+4. vendor_name = the company selling TO you (BILL FROM section, NOT your company name at top)
+5. quantity must be a NUMBER only — extract digits, remove units like KG/PCS/Bags
+6. rate must be a NUMBER only — the price per unit
+7. amount must be a NUMBER only — total for that line item
+8. expiry_date format: YYYY-MM-DD (convert 31 Jan 2027 -> 2027-01-31, 30 Sept 2026 -> 2026-09-30)
+
+Return ONLY valid JSON, no explanation:
+{{"vendor_name": "", "bill_number": "", "bill_date": "", "items": [{{"name": "", "hsn_code": null, "quantity": 0, "unit": "", "rate": 0, "discount": null, "gst_rate": null, "amount": 0, "batch_number": null, "expiry_date": null}}], "subtotal": null, "gst_total": null, "total_amount": 0}}
 
 OCR TEXT:
-{ocr_text}
-
-Return ONLY the JSON object."""
+{ocr_text}"""
 
 BILL_DEFAULTS: dict = {
     "vendor_name":  "",
