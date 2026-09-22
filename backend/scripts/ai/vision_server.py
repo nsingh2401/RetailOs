@@ -18,19 +18,30 @@ Run:
 import base64
 import io
 import json
+import platform
 import re
 from contextlib import asynccontextmanager
 from typing import Optional
 
+import cv2
 import httpx
+import numpy as np
+import pytesseract
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image
+
+# Tesseract binary path — Windows only
+if platform.system() == "Windows":
+    pytesseract.pytesseract.tesseract_cmd = (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    )
 
 # ── Config ─────────────────────────────────────────────────────
 
 OLLAMA_URL   = "http://localhost:11434"
 OLLAMA_MODEL = "llava"
+QWEN_MODEL   = "qwen2.5:7b"
 
 PRODUCT_PROMPT = (
     "You are a product identification AI for an Indian retail POS system. "
@@ -49,33 +60,37 @@ PRODUCT_PROMPT = (
     "Return null for unknown fields. Return ONLY the JSON object, no other text."
 )
 
-BILL_PROMPT = (
-    "This is a vendor/supplier tax invoice or bill. "
-    "Extract ALL line items from this bill and return ONLY a valid JSON object with NO additional text:\n"
-    "{\n"
-    '  "vendor_name": "string",\n'
-    '  "bill_number": "string",\n'
-    '  "bill_date": "string in YYYY-MM-DD format",\n'
-    '  "items": [\n'
-    "    {\n"
-    '      "name": "string",\n'
-    '      "hsn_code": "string or null",\n'
-    '      "quantity": "number",\n'
-    '      "unit": "string",\n'
-    '      "rate": "number",\n'
-    '      "discount": "number or null",\n'
-    '      "gst_rate": "number or null",\n'
-    '      "amount": "number",\n'
-    '      "batch_number": "string or null",\n'
-    '      "expiry_date": "string in YYYY-MM-DD format or null"\n'
-    "    }\n"
-    "  ],\n"
-    '  "subtotal": "number or null",\n'
-    '  "gst_total": "number or null",\n'
-    '  "total_amount": "number"\n'
-    "}\n"
-    "Return ONLY the JSON object. No explanation. No markdown. No extra text."
-)
+BILL_OCR_PROMPT = """\
+You are a bill parsing assistant for an Indian retail POS system.
+The following text was extracted via OCR from a vendor/supplier invoice or bill.
+Parse it and return ONLY a valid JSON object — no explanation, no markdown, no extra text:
+{{
+  "vendor_name": "string",
+  "bill_number": "string",
+  "bill_date": "YYYY-MM-DD or empty string",
+  "items": [
+    {{
+      "name": "string",
+      "hsn_code": "string or null",
+      "quantity": 0,
+      "unit": "string",
+      "rate": 0,
+      "discount": null,
+      "gst_rate": null,
+      "amount": 0,
+      "batch_number": null,
+      "expiry_date": null
+    }}
+  ],
+  "subtotal": null,
+  "gst_total": null,
+  "total_amount": 0
+}}
+
+OCR TEXT:
+{ocr_text}
+
+Return ONLY the JSON object."""
 
 BILL_DEFAULTS: dict = {
     "vendor_name":  "",
@@ -170,6 +185,19 @@ def image_to_base64(data: bytes) -> str:
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def preprocess_for_ocr(img: Image.Image) -> np.ndarray:
+    """Convert PIL image → grayscale → adaptive threshold → denoise."""
+    arr    = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    gray   = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 31, 11,
+    )
+    denoised = cv2.fastNlMeansDenoising(thresh, h=10)
+    return denoised
 
 
 def parse_llava_response(raw: str) -> dict:
@@ -281,34 +309,59 @@ async def analyze(
     return result
 
 
-@app.post("/extract-bill")
-async def extract_bill(
+@app.post("/extract-bill-ocr")
+async def extract_bill_ocr(
     file:         Optional[UploadFile] = File(None),
     base64_image: Optional[str]        = Form(None),
 ):
     """
-    Extract line items from a vendor/supplier bill image via LLaVA.
-    Uses a dedicated bill-extraction prompt tuned for invoices.
+    Extract line items from a vendor/supplier bill using Tesseract OCR + Qwen 2.5 7B.
+    Pipeline: image → preprocess → Tesseract OCR → Qwen text parsing → JSON.
     Accepts either:
       - multipart file upload (field name: 'file')
       - base64-encoded image string (field name: 'base64_image')
     """
+    # ── 1. Load image bytes ──────────────────────────────────────
     data = await load_image(file, base64_image)
 
+    # ── 2. Decode + preprocess for OCR ──────────────────────────
     try:
-        b64_img = image_to_base64(data)
+        pil_img = Image.open(io.BytesIO(data)).convert("RGB")
+        # Scale up small images — Tesseract accuracy improves at higher DPI
+        w, h = pil_img.size
+        if max(w, h) < 1500:
+            scale   = 1500 / max(w, h)
+            pil_img = pil_img.resize(
+                (int(w * scale), int(h * scale)), Image.LANCZOS
+            )
+        processed = preprocess_for_ocr(pil_img)
     except Exception as e:
-        raise HTTPException(400, detail=f"Cannot decode image: {e}")
+        raise HTTPException(400, detail=f"Image processing failed: {e}")
 
+    # ── 3. Tesseract OCR ─────────────────────────────────────────
+    try:
+        ocr_text = pytesseract.image_to_string(
+            processed, lang="eng", config="--psm 6"
+        )
+    except Exception as e:
+        raise HTTPException(500, detail=f"OCR failed: {e}")
+
+    if not ocr_text.strip():
+        return JSONResponse(status_code=200, content={
+            "success": False,
+            **BILL_DEFAULTS,
+            "_error": "OCR returned empty text — check image quality",
+        })
+
+    # ── 4. Qwen 2.5 7B — structured parsing ─────────────────────
+    prompt  = BILL_OCR_PROMPT.replace("{ocr_text}", ocr_text.strip())
     payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": BILL_PROMPT,
-        "images": [b64_img],
+        "model":  QWEN_MODEL,
+        "prompt": prompt,
         "stream": False,
     }
-
     try:
-        async with httpx.AsyncClient(timeout=300) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(f"{OLLAMA_URL}/api/generate", json=payload)
             r.raise_for_status()
             raw_text = r.json().get("response", "")
@@ -318,11 +371,11 @@ async def extract_bill(
             "Is Ollama running? Start it or install from https://ollama.com/download"
         ))
     except httpx.TimeoutException:
-        raise HTTPException(504, detail="Ollama inference timed out (>300s)")
+        raise HTTPException(504, detail="Qwen inference timed out (>120s)")
     except Exception as e:
         raise HTTPException(502, detail=f"Ollama error: {e}")
 
-    # Parse JSON from response
+    # ── 5. Parse JSON from Qwen response ─────────────────────────
     raw = raw_text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
     raw = re.sub(r"\s*```$",          "", raw, flags=re.MULTILINE)
@@ -331,29 +384,31 @@ async def extract_bill(
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
         return JSONResponse(status_code=200, content={
+            "success": False,
             **BILL_DEFAULTS,
-            "_parse_error": "No JSON in response",
-            "_raw": raw_text[:500],
+            "_parse_error": "No JSON in Qwen response",
+            "_raw_ocr":     ocr_text[:500],
+            "_raw_llm":     raw_text[:500],
         })
 
     try:
         parsed = json.loads(match.group())
     except json.JSONDecodeError as e:
         return JSONResponse(status_code=200, content={
+            "success": False,
             **BILL_DEFAULTS,
             "_parse_error": str(e),
-            "_raw": raw_text[:500],
+            "_raw_ocr":     ocr_text[:500],
         })
 
-    # Apply defaults for missing top-level keys
+    # Apply defaults for any missing top-level keys
     for k, v in BILL_DEFAULTS.items():
         parsed.setdefault(k, v)
 
-    # Ensure items is a list
     if not isinstance(parsed.get("items"), list):
         parsed["items"] = []
 
-    return parsed
+    return {"success": True, "data": parsed, "raw_ocr": ocr_text}
 
 
 # ── Entrypoint ─────────────────────────────────────────────────

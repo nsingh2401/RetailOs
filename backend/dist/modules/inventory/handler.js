@@ -279,53 +279,28 @@ async function scanVendorBill(request, reply) {
             error: { code: 'VALIDATION_ERROR', message: 'Empty file received', statusCode: 400 },
         });
     }
-    // ── 2. Send to LLaVA with bill-specific prompt ──────────────
-    const BILL_PROMPT = `You are analyzing an Indian vendor/supplier bill or invoice. Extract ALL line items and return ONLY a JSON object with these fields:
-{
-  "vendor_name": "string",
-  "bill_date": "YYYY-MM-DD or empty string",
-  "bill_number": "string",
-  "items": [
-    {
-      "name": "string",
-      "quantity": 1,
-      "unit": "string",
-      "rate": 0,
-      "amount": 0,
-      "batch_number": null,
-      "expiry_date": null,
-      "factory_code": null,
-      "gst_rate": null,
-      "hsn_code": null
-    }
-  ],
-  "total_amount": 0,
-  "gst_total": null
-}
-Return ONLY the JSON, no other text.`;
+    // ── 2. Send to OCR service (Tesseract + Qwen 2.5 7B) ──────────
     let billData;
     try {
         const formData = new FormData();
         const blob = new Blob([fileBuffer], { type: data.mimetype ?? 'image/jpeg' });
         formData.append('file', blob, data.filename ?? 'bill.jpg');
-        formData.append('prompt', BILL_PROMPT);
-        const resp = await fetch(`${MOONDREAM_URL}/extract-bill`, {
+        const resp = await fetch(`${MOONDREAM_URL}/extract-bill-ocr`, {
             method: 'POST',
             body: formData,
             signal: AbortSignal.timeout(300_000),
         });
         if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
-            throw new Error(`LLaVA HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+            throw new Error(`OCR service HTTP ${resp.status}: ${errText.slice(0, 200)}`);
         }
-        // LLaVA returns { result: string } where result is the JSON text
-        const raw = (await resp.json());
-        const text = raw['result'] ?? JSON.stringify(raw);
-        // Extract JSON from the response (strip markdown code fences if any)
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch)
-            throw new Error('No JSON found in LLaVA response');
-        billData = JSON.parse(jsonMatch[0]);
+        // /extract-bill-ocr returns { success: bool, data: {...}, raw_ocr: string }
+        const envelope = (await resp.json());
+        if (!envelope['success']) {
+            const err = (envelope['_error'] ?? envelope['_parse_error'] ?? 'OCR failed');
+            throw new Error(`OCR parse failed: ${err}`);
+        }
+        billData = envelope['data'] ?? {};
     }
     catch (err) {
         request.log.warn({ err }, 'LLaVA bill scan failed');
