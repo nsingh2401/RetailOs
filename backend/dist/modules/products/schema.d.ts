@@ -4,7 +4,7 @@ export declare const CreateProductSchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodString>;
     categoryId: z.ZodOptional<z.ZodString>;
     brandId: z.ZodOptional<z.ZodString>;
-    internalSku: z.ZodString;
+    internalSku: z.ZodOptional<z.ZodString>;
     barcode: z.ZodOptional<z.ZodString>;
     barcodeType: z.ZodOptional<z.ZodEnum<["EAN13", "EAN8", "QR", "CODE128", "UPC", "GS1", "INTERNAL"]>>;
     hsnCode: z.ZodOptional<z.ZodString>;
@@ -19,7 +19,6 @@ export declare const CreateProductSchema: z.ZodObject<{
     lowStockThreshold: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    internalSku: string;
     sellingPrice: number;
     pricingType: "FIXED" | "WEIGHT" | "LOOSE" | "NEGOTIABLE" | "MRP";
     purchasePrice: number;
@@ -28,6 +27,7 @@ export declare const CreateProductSchema: z.ZodObject<{
     hasBatches: boolean;
     hsnCode?: string | undefined;
     lowStockThreshold?: number | undefined;
+    internalSku?: string | undefined;
     barcode?: string | undefined;
     description?: string | undefined;
     categoryId?: string | undefined;
@@ -37,9 +37,9 @@ export declare const CreateProductSchema: z.ZodObject<{
     mrp?: number | undefined;
 }, {
     name: string;
-    internalSku: string;
     hsnCode?: string | undefined;
     lowStockThreshold?: number | undefined;
+    internalSku?: string | undefined;
     barcode?: string | undefined;
     sellingPrice?: number | undefined;
     description?: string | undefined;
@@ -59,7 +59,7 @@ export declare const UpdateProductSchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     categoryId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     brandId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
-    internalSku: z.ZodOptional<z.ZodString>;
+    internalSku: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     barcode: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     barcodeType: z.ZodOptional<z.ZodOptional<z.ZodEnum<["EAN13", "EAN8", "QR", "CODE128", "UPC", "GS1", "INTERNAL"]>>>;
     hsnCode: z.ZodOptional<z.ZodOptional<z.ZodString>>;

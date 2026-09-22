@@ -20,7 +20,7 @@ exports.CreateProductSchema = zod_1.z.object({
     description: zod_1.z.string().optional(),
     categoryId: zod_1.z.string().uuid().optional(),
     brandId: zod_1.z.string().uuid().optional(),
-    internalSku: zod_1.z.string().min(1).max(100),
+    internalSku: zod_1.z.string().min(1).max(100).optional(),
     barcode: zod_1.z.string().optional(),
     barcodeType: BarcodeTypeEnum.optional(),
     hsnCode: zod_1.z.string().optional(),

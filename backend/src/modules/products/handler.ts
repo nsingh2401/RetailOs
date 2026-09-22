@@ -133,6 +133,20 @@ export async function createProduct(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // ── HSN code: upsert into hsn_codes if provided but missing ──
+      let resolvedHsnCode: string | undefined = body.hsnCode ?? undefined;
+      if (resolvedHsnCode) {
+        await tx.hsnCode.upsert({
+          where:  { hsnCode: resolvedHsnCode },
+          update: {},   // already exists — nothing to change
+          create: {
+            hsnCode:        resolvedHsnCode,
+            description:    resolvedHsnCode,   // placeholder until master data fills it
+            defaultGstRate: 0,   // placeholder; updated when master HSN data is loaded
+          },
+        });
+      }
+
       const product = await tx.product.create({
         data: {
           storeId,
@@ -140,10 +154,10 @@ export async function createProduct(
           description:       body.description,
           categoryId:        body.categoryId,
           brandId:           body.brandId,
-          internalSku:       body.internalSku,
+          internalSku:       body.internalSku ?? body.name.slice(0, 6).toUpperCase().replace(/\s+/g, '') + '-' + Date.now().toString().slice(-4),
           barcode:           body.barcode,
           barcodeType:       body.barcodeType,
-          hsnCode:           body.hsnCode,
+          hsnCode:           resolvedHsnCode,
           taxRuleId:         body.taxRuleId,
           pricingType:       body.pricingType,
           sellingPrice:      body.sellingPrice,
