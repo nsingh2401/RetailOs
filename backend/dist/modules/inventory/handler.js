@@ -312,7 +312,7 @@ Return ONLY the JSON, no other text.`;
         const resp = await fetch(`${MOONDREAM_URL}/analyze`, {
             method: 'POST',
             body: formData,
-            signal: AbortSignal.timeout(180_000),
+            signal: AbortSignal.timeout(300_000),
         });
         if (!resp.ok) {
             const errText = await resp.text().catch(() => '');
