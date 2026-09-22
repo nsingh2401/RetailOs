@@ -138,6 +138,29 @@ app = FastAPI(
 
 # ── Helpers ────────────────────────────────────────────────────
 
+async def load_image(
+    file:         Optional[UploadFile],
+    base64_image: Optional[str],
+) -> bytes:
+    """Read raw image bytes from either a multipart upload or a base64 string."""
+    if file is not None:
+        data = await file.read()
+    elif base64_image:
+        b64 = re.sub(r"^data:image/[^;]+;base64,", "", base64_image.strip())
+        try:
+            data = base64.b64decode(b64)
+        except Exception as e:
+            raise HTTPException(400, detail=f"Invalid base64: {e}")
+    else:
+        raise HTTPException(
+            400,
+            detail="Provide 'file' (multipart upload) or 'base64_image' (form field)",
+        )
+    if not data:
+        raise HTTPException(400, detail="Empty image data")
+    return data
+
+
 def image_to_base64(data: bytes) -> str:
     """Resize large images before sending to Ollama (keeps inference fast)."""
     img = Image.open(io.BytesIO(data)).convert("RGB")
@@ -216,22 +239,7 @@ async def analyze(
       - multipart file upload (field name: 'file')
       - base64-encoded image string (field name: 'base64_image')
     """
-    if file is not None:
-        data = await file.read()
-    elif base64_image:
-        b64 = re.sub(r"^data:image/[^;]+;base64,", "", base64_image.strip())
-        try:
-            data = base64.b64decode(b64)
-        except Exception as e:
-            raise HTTPException(400, detail=f"Invalid base64: {e}")
-    else:
-        raise HTTPException(
-            400,
-            detail="Provide 'file' (multipart upload) or 'base64_image' (form field)"
-        )
-
-    if not data:
-        raise HTTPException(400, detail="Empty image data")
+    data = await load_image(file, base64_image)
 
     try:
         b64_img = image_to_base64(data)
@@ -285,22 +293,7 @@ async def extract_bill(
       - multipart file upload (field name: 'file')
       - base64-encoded image string (field name: 'base64_image')
     """
-    if file is not None:
-        data = await file.read()
-    elif base64_image:
-        b64 = re.sub(r"^data:image/[^;]+;base64,", "", base64_image.strip())
-        try:
-            data = base64.b64decode(b64)
-        except Exception as e:
-            raise HTTPException(400, detail=f"Invalid base64: {e}")
-    else:
-        raise HTTPException(
-            400,
-            detail="Provide 'file' (multipart upload) or 'base64_image' (form field)"
-        )
-
-    if not data:
-        raise HTTPException(400, detail="Empty image data")
+    data = await load_image(file, base64_image)
 
     try:
         b64_img = image_to_base64(data)
