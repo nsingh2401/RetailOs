@@ -388,7 +388,7 @@ Return ONLY the JSON, no other text.`;
     formData.append('file',   blob, data.filename ?? 'bill.jpg');
     formData.append('prompt', BILL_PROMPT);
 
-    const resp = await fetch(`${MOONDREAM_URL}/analyze`, {
+    const resp = await fetch(`${MOONDREAM_URL}/extract-bill`, {
       method: 'POST',
       body:   formData,
       signal: AbortSignal.timeout(300_000),

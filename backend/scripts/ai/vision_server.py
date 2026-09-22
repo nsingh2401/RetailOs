@@ -49,6 +49,44 @@ PRODUCT_PROMPT = (
     "Return null for unknown fields. Return ONLY the JSON object, no other text."
 )
 
+BILL_PROMPT = (
+    "This is a vendor/supplier tax invoice or bill. "
+    "Extract ALL line items from this bill and return ONLY a valid JSON object with NO additional text:\n"
+    "{\n"
+    '  "vendor_name": "string",\n'
+    '  "bill_number": "string",\n'
+    '  "bill_date": "string in YYYY-MM-DD format",\n'
+    '  "items": [\n'
+    "    {\n"
+    '      "name": "string",\n'
+    '      "hsn_code": "string or null",\n'
+    '      "quantity": "number",\n'
+    '      "unit": "string",\n'
+    '      "rate": "number",\n'
+    '      "discount": "number or null",\n'
+    '      "gst_rate": "number or null",\n'
+    '      "amount": "number",\n'
+    '      "batch_number": "string or null",\n'
+    '      "expiry_date": "string in YYYY-MM-DD format or null"\n'
+    "    }\n"
+    "  ],\n"
+    '  "subtotal": "number or null",\n'
+    '  "gst_total": "number or null",\n'
+    '  "total_amount": "number"\n'
+    "}\n"
+    "Return ONLY the JSON object. No explanation. No markdown. No extra text."
+)
+
+BILL_DEFAULTS: dict = {
+    "vendor_name":  "",
+    "bill_number":  "",
+    "bill_date":    "",
+    "items":        [],
+    "subtotal":     None,
+    "gst_total":    None,
+    "total_amount": 0,
+}
+
 RESPONSE_DEFAULTS: dict = {
     "product_name":           "",
     "brand":                  "",
@@ -233,6 +271,96 @@ async def analyze(
         })
 
     return result
+
+
+@app.post("/extract-bill")
+async def extract_bill(
+    file:         Optional[UploadFile] = File(None),
+    base64_image: Optional[str]        = Form(None),
+):
+    """
+    Extract line items from a vendor/supplier bill image via LLaVA.
+    Uses a dedicated bill-extraction prompt tuned for invoices.
+    Accepts either:
+      - multipart file upload (field name: 'file')
+      - base64-encoded image string (field name: 'base64_image')
+    """
+    if file is not None:
+        data = await file.read()
+    elif base64_image:
+        b64 = re.sub(r"^data:image/[^;]+;base64,", "", base64_image.strip())
+        try:
+            data = base64.b64decode(b64)
+        except Exception as e:
+            raise HTTPException(400, detail=f"Invalid base64: {e}")
+    else:
+        raise HTTPException(
+            400,
+            detail="Provide 'file' (multipart upload) or 'base64_image' (form field)"
+        )
+
+    if not data:
+        raise HTTPException(400, detail="Empty image data")
+
+    try:
+        b64_img = image_to_base64(data)
+    except Exception as e:
+        raise HTTPException(400, detail=f"Cannot decode image: {e}")
+
+    payload = {
+        "model":  OLLAMA_MODEL,
+        "prompt": BILL_PROMPT,
+        "images": [b64_img],
+        "stream": False,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            r = await client.post(f"{OLLAMA_URL}/api/generate", json=payload)
+            r.raise_for_status()
+            raw_text = r.json().get("response", "")
+    except httpx.ConnectError:
+        raise HTTPException(503, detail=(
+            f"Cannot connect to Ollama at {OLLAMA_URL}. "
+            "Is Ollama running? Start it or install from https://ollama.com/download"
+        ))
+    except httpx.TimeoutException:
+        raise HTTPException(504, detail="Ollama inference timed out (>300s)")
+    except Exception as e:
+        raise HTTPException(502, detail=f"Ollama error: {e}")
+
+    # Parse JSON from response
+    raw = raw_text.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```$",          "", raw, flags=re.MULTILINE)
+    raw = raw.strip()
+
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        return JSONResponse(status_code=200, content={
+            **BILL_DEFAULTS,
+            "_parse_error": "No JSON in response",
+            "_raw": raw_text[:500],
+        })
+
+    try:
+        parsed = json.loads(match.group())
+    except json.JSONDecodeError as e:
+        return JSONResponse(status_code=200, content={
+            **BILL_DEFAULTS,
+            "_parse_error": str(e),
+            "_raw": raw_text[:500],
+        })
+
+    # Apply defaults for missing top-level keys
+    for k, v in BILL_DEFAULTS.items():
+        parsed.setdefault(k, v)
+
+    # Ensure items is a list
+    if not isinstance(parsed.get("items"), list):
+        parsed["items"] = []
+
+    return parsed
 
 
 # ── Entrypoint ─────────────────────────────────────────────────
