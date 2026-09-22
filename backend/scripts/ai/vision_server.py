@@ -354,6 +354,7 @@ async def extract_bill_ocr(
         })
 
     # ── 4. Qwen 2.5 7B — structured parsing ─────────────────────
+    print(f"[extract-bill-ocr] OCR complete — {len(ocr_text.strip())} chars extracted")
     prompt  = BILL_OCR_PROMPT.replace("{ocr_text}", ocr_text.strip())
     payload = {
         "model":  QWEN_MODEL,
@@ -361,7 +362,7 @@ async def extract_bill_ocr(
         "stream": False,
     }
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             r = await client.post(f"{OLLAMA_URL}/api/generate", json=payload)
             r.raise_for_status()
             raw_text = r.json().get("response", "")
@@ -371,7 +372,7 @@ async def extract_bill_ocr(
             "Is Ollama running? Start it or install from https://ollama.com/download"
         ))
     except httpx.TimeoutException:
-        raise HTTPException(504, detail="Qwen inference timed out (>120s)")
+        raise HTTPException(504, detail="Qwen inference timed out (>300s)")
     except Exception as e:
         raise HTTPException(502, detail=f"Ollama error: {e}")
 
