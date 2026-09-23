@@ -116,6 +116,7 @@ export declare const CreateVariantSchema: z.ZodObject<{
     priceOverride: z.ZodOptional<z.ZodNumber>;
     purchasePrice: z.ZodOptional<z.ZodNumber>;
     initialStock: z.ZodDefault<z.ZodNumber>;
+    expiryDate: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     variantSku: string;
     variantAttributes: Record<string, unknown>;
@@ -123,6 +124,7 @@ export declare const CreateVariantSchema: z.ZodObject<{
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
     priceOverride?: number | undefined;
+    expiryDate?: string | undefined;
 }, {
     variantSku: string;
     barcode?: string | undefined;
@@ -130,6 +132,7 @@ export declare const CreateVariantSchema: z.ZodObject<{
     variantAttributes?: Record<string, unknown> | undefined;
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
+    expiryDate?: string | undefined;
 }>;
 export declare const UpdateVariantSchema: z.ZodObject<{
     variantSku: z.ZodOptional<z.ZodString>;
@@ -138,6 +141,7 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     priceOverride: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
     purchasePrice: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
     initialStock: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
+    expiryDate: z.ZodOptional<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
@@ -145,6 +149,7 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     variantAttributes?: Record<string, unknown> | undefined;
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
+    expiryDate?: string | undefined;
 }, {
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
@@ -152,6 +157,7 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     variantAttributes?: Record<string, unknown> | undefined;
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
+    expiryDate?: string | undefined;
 }>;
 export declare const ProductListQuerySchema: z.ZodObject<{
     categoryId: z.ZodOptional<z.ZodString>;

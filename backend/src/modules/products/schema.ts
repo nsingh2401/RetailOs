@@ -47,6 +47,7 @@ export const CreateVariantSchema = z.object({
   priceOverride:     z.number().nonnegative().optional(),
   purchasePrice:     z.number().nonnegative().optional(),
   initialStock:      z.number().nonnegative().default(0),
+  expiryDate:        z.string().optional(), // YYYY-MM-DD, creates initial Batch record
 });
 
 export const UpdateVariantSchema = CreateVariantSchema.partial();

@@ -545,6 +545,21 @@ export async function createVariant(
             referenceType:  'VARIANT_CREATION',
           },
         });
+
+        // Bug 2/3: create opening-stock Batch with expiry date
+        if (body.expiryDate) {
+          await tx.batch.create({
+            data: {
+              variantId:    variant.variantId,
+              storeId,
+              batchNumber:  `OPEN-${Date.now()}`,
+              quantity:     body.initialStock,
+              remainingQty: body.initialStock,
+              purchasePrice: body.purchasePrice ?? 0,
+              expiryDate:   new Date(body.expiryDate),
+            },
+          });
+        }
       }
 
       return { variant, inventory };

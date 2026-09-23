@@ -37,16 +37,16 @@ export declare const CreatePurchaseSchema: z.ZodObject<{
         variantId: string;
         quantity: number;
         unitCost: number;
+        expiryDate?: string | undefined;
         batchNumber?: string | undefined;
         manufacturingDate?: string | undefined;
-        expiryDate?: string | undefined;
     }, {
         variantId: string;
         quantity: number;
         unitCost: number;
+        expiryDate?: string | undefined;
         batchNumber?: string | undefined;
         manufacturingDate?: string | undefined;
-        expiryDate?: string | undefined;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     currencyCode: string;
@@ -56,9 +56,9 @@ export declare const CreatePurchaseSchema: z.ZodObject<{
         variantId: string;
         quantity: number;
         unitCost: number;
+        expiryDate?: string | undefined;
         batchNumber?: string | undefined;
         manufacturingDate?: string | undefined;
-        expiryDate?: string | undefined;
     }[];
     brandId?: string | undefined;
     notes?: string | undefined;
@@ -69,9 +69,9 @@ export declare const CreatePurchaseSchema: z.ZodObject<{
         variantId: string;
         quantity: number;
         unitCost: number;
+        expiryDate?: string | undefined;
         batchNumber?: string | undefined;
         manufacturingDate?: string | undefined;
-        expiryDate?: string | undefined;
     }[];
     currencyCode?: string | undefined;
     brandId?: string | undefined;

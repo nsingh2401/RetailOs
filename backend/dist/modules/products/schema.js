@@ -43,6 +43,7 @@ exports.CreateVariantSchema = zod_1.z.object({
     priceOverride: zod_1.z.number().nonnegative().optional(),
     purchasePrice: zod_1.z.number().nonnegative().optional(),
     initialStock: zod_1.z.number().nonnegative().default(0),
+    expiryDate: zod_1.z.string().optional(), // YYYY-MM-DD, creates initial Batch record
 });
 exports.UpdateVariantSchema = exports.CreateVariantSchema.partial();
 // ── Query schemas ──────────────────────────────────────────────
