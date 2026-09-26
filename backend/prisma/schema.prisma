@@ -63,6 +63,7 @@ enum IndustryType {
   TEA_CAFE
   PAAN_CIGARETTE
   PAN_SHOP
+  IT_HARDWARE
   GENERAL
 
   @@map("industry_type")

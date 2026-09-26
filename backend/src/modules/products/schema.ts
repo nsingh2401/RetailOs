@@ -9,7 +9,7 @@ const IndustryTypeEnum   = z.enum([
   'APPAREL', 'FOOTWEAR', 'GROCERY', 'PHARMACY', 'ELECTRONICS',
   'HARDWARE', 'OPTICAL', 'KITCHENWARE', 'STATIONERY', 'TOYS',
   'GIFT', 'BAKERY', 'PAINT', 'FURNITURE', 'JEWELRY',
-  'BAGS', 'TEA_CAFE', 'PAAN_CIGARETTE', 'PAN_SHOP', 'GENERAL',
+  'BAGS', 'TEA_CAFE', 'PAAN_CIGARETTE', 'PAN_SHOP', 'IT_HARDWARE', 'GENERAL',
 ]);
 const CameraAngleEnum    = z.enum(['FRONT', 'BACK', 'SIDE', 'BARCODE', 'LABEL', 'TOP']);
 const LightingEnum       = z.enum(['NATURAL', 'FLUORESCENT', 'POOR', 'BRIGHT']);

@@ -636,7 +636,31 @@ async function seedIndustryConfigs() {
             specialFields: [],
             dataVersion: 1,
         },
-        // ── 20. GENERAL ─────────────────────────────
+        // ── 20. IT_HARDWARE ─────────────────────────
+        {
+            industryType: 'IT_HARDWARE',
+            displayName: 'IT Hardware & Computer Parts',
+            batchTrackingRequired: false,
+            requiresBatchExpiry: false,
+            defaultPricingType: 'FIXED',
+            allowedPricingTypes: ['FIXED', 'MRP', 'NEGOTIABLE'],
+            defaultUnit: 'PCS',
+            allowedUnits: ['PCS', 'PACK', 'BOX', 'SET'],
+            variantAttributes: [
+                { name: 'brand', label: 'Brand',
+                    type: 'text', required: false,
+                    placeholder: 'e.g. Intel, Samsung, Kingston' },
+                { name: 'model', label: 'Model / Part No.',
+                    type: 'text', required: false,
+                    placeholder: 'e.g. Core i5-12400, MX500' },
+                { name: 'specification', label: 'Specification',
+                    type: 'text', required: false,
+                    placeholder: 'e.g. 8GB DDR4, 512GB NVMe' },
+            ],
+            specialFields: [{ hasWarranty: true }],
+            dataVersion: 1,
+        },
+        // ── 21. GENERAL ─────────────────────────────
         {
             industryType: 'GENERAL',
             displayName: 'General Store',
@@ -665,7 +689,7 @@ async function seedIndustryConfigs() {
         });
         console.log(`  ✓ ${cfg.industryType}`);
     }
-    console.log('✓ master_industry_config seeded (20 rows)');
+    console.log('✓ master_industry_config seeded (21 rows)');
 }
 // ─────────────────────────────────────────────────
 // SECTION 3 — master_categories
@@ -1060,6 +1084,50 @@ async function seedCategories() {
         { root: 'Daily Use',
             subs: ['Match Box', 'Lighter', 'Agarbatti',
                 'Camphor'] },
+    ]);
+    // ── IT_HARDWARE ───────────────────────────────
+    await seedIndustry('IT_HARDWARE', [
+        { root: 'Computer Parts',
+            subs: ['Processor / CPU', 'Motherboard', 'RAM',
+                'Hard Disk / HDD', 'SSD',
+                'Cabinet / Casing', 'SMPS / Power Supply',
+                'Cooling Fan', 'Graphics Card',
+                'Sound Card'] },
+        { root: 'Laptop Parts',
+            subs: ['Laptop Screen / Display',
+                'Laptop Keyboard', 'Laptop Battery',
+                'Laptop Charger', 'Laptop Hinges',
+                'Laptop Touchpad', 'Laptop Fan',
+                'DC Jack'] },
+        { root: 'Printer & Consumables',
+            subs: ['Ink Cartridge', 'Toner Cartridge',
+                'Drum Unit', 'Printer Head',
+                'Printer Roller', 'Ribbon',
+                'Photo Paper', 'A4 Paper'] },
+        { root: 'Networking',
+            subs: ['WiFi Router', 'Network Switch',
+                'LAN Cable', 'WiFi Adapter', 'Modem',
+                'Network Card', 'Patch Panel',
+                'RJ45 Connector'] },
+        { root: 'Peripherals',
+            subs: ['Mouse', 'Keyboard', 'Webcam',
+                'Headphone / Headset', 'Speaker',
+                'Microphone', 'Joystick',
+                'Drawing Tablet'] },
+        { root: 'Storage & Memory',
+            subs: ['Pen Drive / USB', 'External HDD',
+                'Memory Card', 'OTG Adapter',
+                'Card Reader', 'DVD Writer'] },
+        { root: 'Cables & Adapters',
+            subs: ['HDMI Cable', 'VGA Cable', 'USB Cable',
+                'Type-C Cable', 'Display Port',
+                'Power Cable', 'Extension Board'] },
+        { root: 'Monitors & Display',
+            subs: ['LED Monitor', 'Smart Display',
+                'Monitor Stand', 'Screen Guard'] },
+        { root: 'Software & Licenses',
+            subs: ['Windows License', 'Antivirus',
+                'Office Suite', 'Software CD'] },
     ]);
     // ── GENERAL ───────────────────────────────────
     await seedIndustry('GENERAL', [
