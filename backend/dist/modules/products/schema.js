@@ -10,7 +10,7 @@ const IndustryTypeEnum = zod_1.z.enum([
     'APPAREL', 'FOOTWEAR', 'GROCERY', 'PHARMACY', 'ELECTRONICS',
     'HARDWARE', 'OPTICAL', 'KITCHENWARE', 'STATIONERY', 'TOYS',
     'GIFT', 'BAKERY', 'PAINT', 'FURNITURE', 'JEWELRY',
-    'BAGS', 'TEA_CAFE', 'PAAN_CIGARETTE', 'GENERAL',
+    'BAGS', 'TEA_CAFE', 'PAAN_CIGARETTE', 'PAN_SHOP', 'GENERAL',
 ]);
 const CameraAngleEnum = zod_1.z.enum(['FRONT', 'BACK', 'SIDE', 'BARCODE', 'LABEL', 'TOP']);
 const LightingEnum = zod_1.z.enum(['NATURAL', 'FLUORESCENT', 'POOR', 'BRIGHT']);

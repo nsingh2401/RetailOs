@@ -610,7 +610,22 @@ async function seedIndustryConfigs() {
       dataVersion: 1,
     },
 
-    // ── 19. GENERAL ─────────────────────────────
+    // ── 19. PAN_SHOP ────────────────────────────
+    {
+      industryType:          'PAN_SHOP',
+      displayName:           'Pan Shop',
+      batchTrackingRequired: false,
+      requiresBatchExpiry:   false,
+      defaultPricingType:    'FIXED',
+      allowedPricingTypes:   ['FIXED', 'MRP'],
+      defaultUnit:           'PCS',
+      allowedUnits:          ['PCS', 'PACK', 'BOX', 'DOZEN'],
+      variantAttributes:     [],
+      specialFields:         [],
+      dataVersion:           1,
+    },
+
+    // ── 20. GENERAL ─────────────────────────────
     {
       industryType:          'GENERAL',
       displayName:           'General Store',
@@ -641,7 +656,7 @@ async function seedIndustryConfigs() {
     });
     console.log(`  ✓ ${cfg.industryType}`);
   }
-  console.log('✓ master_industry_config seeded (19 rows)');
+  console.log('✓ master_industry_config seeded (20 rows)');
 }
 
 // ─────────────────────────────────────────────────
@@ -1048,6 +1063,30 @@ async function seedCategories() {
     { root: 'Functional Bags',
       subs: ['Laptop Bags','School Bags',
              'Gym Bags','Office Bags'] },
+  ]);
+
+  // ── PAN_SHOP ──────────────────────────────────
+  await seedIndustry('PAN_SHOP', [
+    { root: 'Paan & Betel',
+      subs: ['Plain Paan','Meetha Paan','Saada Paan',
+             'Banarasi Paan','Calcutta Paan'] },
+    { root: 'Tobacco Products',
+      subs: ['Cigarettes','Bidi','Gutka','Zarda',
+             'Khaini','Tambaku'] },
+    { root: 'Mouth Freshener',
+      subs: ['Supari','Elaichi','Saunf Mix',
+             'Mukhwas','Pan Masala'] },
+    { root: 'Beverages',
+      subs: ['Cold Drinks','Water Bottle','Juice',
+             'Energy Drinks','Lassi'] },
+    { root: 'Snacks',
+      subs: ['Chips','Biscuits','Namkeen',
+             'Candy','Chocolate'] },
+    { root: 'Mobile Services',
+      subs: ['Recharge','Data Card','SIM Card'] },
+    { root: 'Daily Use',
+      subs: ['Match Box','Lighter','Agarbatti',
+             'Camphor'] },
   ]);
 
   // ── GENERAL ───────────────────────────────────

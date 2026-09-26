@@ -194,16 +194,16 @@ export declare const ProductSearchQuerySchema: z.ZodObject<{
 export declare const CreateCategorySchema: z.ZodObject<{
     name: z.ZodString;
     parentId: z.ZodOptional<z.ZodString>;
-    industryType: z.ZodOptional<z.ZodEnum<["APPAREL", "FOOTWEAR", "GROCERY", "PHARMACY", "ELECTRONICS", "HARDWARE", "OPTICAL", "KITCHENWARE", "STATIONERY", "TOYS", "GIFT", "BAKERY", "PAINT", "FURNITURE", "JEWELRY", "BAGS", "TEA_CAFE", "PAAN_CIGARETTE", "GENERAL"]>>;
+    industryType: z.ZodOptional<z.ZodEnum<["APPAREL", "FOOTWEAR", "GROCERY", "PHARMACY", "ELECTRONICS", "HARDWARE", "OPTICAL", "KITCHENWARE", "STATIONERY", "TOYS", "GIFT", "BAKERY", "PAINT", "FURNITURE", "JEWELRY", "BAGS", "TEA_CAFE", "PAAN_CIGARETTE", "PAN_SHOP", "GENERAL"]>>;
     sortOrder: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     name: string;
     sortOrder: number;
-    industryType?: "APPAREL" | "FOOTWEAR" | "GROCERY" | "PHARMACY" | "ELECTRONICS" | "HARDWARE" | "OPTICAL" | "KITCHENWARE" | "STATIONERY" | "TOYS" | "GIFT" | "BAKERY" | "PAINT" | "FURNITURE" | "JEWELRY" | "BAGS" | "TEA_CAFE" | "PAAN_CIGARETTE" | "GENERAL" | undefined;
+    industryType?: "APPAREL" | "FOOTWEAR" | "GROCERY" | "PHARMACY" | "ELECTRONICS" | "HARDWARE" | "OPTICAL" | "KITCHENWARE" | "STATIONERY" | "TOYS" | "GIFT" | "BAKERY" | "PAINT" | "FURNITURE" | "JEWELRY" | "BAGS" | "TEA_CAFE" | "PAAN_CIGARETTE" | "GENERAL" | "PAN_SHOP" | undefined;
     parentId?: string | undefined;
 }, {
     name: string;
-    industryType?: "APPAREL" | "FOOTWEAR" | "GROCERY" | "PHARMACY" | "ELECTRONICS" | "HARDWARE" | "OPTICAL" | "KITCHENWARE" | "STATIONERY" | "TOYS" | "GIFT" | "BAKERY" | "PAINT" | "FURNITURE" | "JEWELRY" | "BAGS" | "TEA_CAFE" | "PAAN_CIGARETTE" | "GENERAL" | undefined;
+    industryType?: "APPAREL" | "FOOTWEAR" | "GROCERY" | "PHARMACY" | "ELECTRONICS" | "HARDWARE" | "OPTICAL" | "KITCHENWARE" | "STATIONERY" | "TOYS" | "GIFT" | "BAKERY" | "PAINT" | "FURNITURE" | "JEWELRY" | "BAGS" | "TEA_CAFE" | "PAAN_CIGARETTE" | "GENERAL" | "PAN_SHOP" | undefined;
     parentId?: string | undefined;
     sortOrder?: number | undefined;
 }>;
