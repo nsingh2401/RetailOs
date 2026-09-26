@@ -87,7 +87,9 @@ async function buildApp() {
     // ── Security & CORS ────────────────────────────────────────
     await app.register(helmet_1.default, { contentSecurityPolicy: false });
     await app.register(cors_1.default, {
-        origin: process.env.NODE_ENV === 'production' ? /yourdomain\.com$/ : true,
+        origin: process.env.NODE_ENV === 'production'
+            ? (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : /biznyss\.com$/)
+            : true,
         credentials: true,
     });
     // ── WebSocket support ──────────────────────────────────────

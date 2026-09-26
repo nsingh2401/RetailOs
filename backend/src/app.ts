@@ -54,7 +54,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ── Security & CORS ────────────────────────────────────────
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, {
-    origin: process.env.NODE_ENV === 'production' ? /yourdomain\.com$/ : true,
+    origin: process.env.NODE_ENV === 'production'
+      ? (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) : /biznyss\.com$/)
+      : true,
     credentials: true,
   });
 
