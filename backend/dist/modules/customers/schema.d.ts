@@ -24,11 +24,18 @@ export declare const CreateCustomerSchema: z.ZodObject<{
     }>>;
     creditLimit: z.ZodDefault<z.ZodNumber>;
     notes: z.ZodOptional<z.ZodString>;
+    customerType: z.ZodDefault<z.ZodEnum<["B2C", "B2B"]>>;
+    gstin: z.ZodOptional<z.ZodString>;
+    legalName: z.ZodOptional<z.ZodString>;
+    businessAddress: z.ZodOptional<z.ZodString>;
+    stateCode: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     name: string;
     creditLimit: number;
+    customerType: "B2C" | "B2B";
     email?: string | undefined;
     phone?: string | undefined;
+    gstin?: string | undefined;
     address?: {
         line1?: string | undefined;
         city?: string | undefined;
@@ -37,10 +44,14 @@ export declare const CreateCustomerSchema: z.ZodObject<{
         country?: string | undefined;
     } | undefined;
     notes?: string | undefined;
+    legalName?: string | undefined;
+    businessAddress?: string | undefined;
+    stateCode?: string | undefined;
 }, {
     name: string;
     email?: string | undefined;
     phone?: string | undefined;
+    gstin?: string | undefined;
     address?: {
         line1?: string | undefined;
         city?: string | undefined;
@@ -50,6 +61,10 @@ export declare const CreateCustomerSchema: z.ZodObject<{
     } | undefined;
     notes?: string | undefined;
     creditLimit?: number | undefined;
+    customerType?: "B2C" | "B2B" | undefined;
+    legalName?: string | undefined;
+    businessAddress?: string | undefined;
+    stateCode?: string | undefined;
 }>;
 export declare const UpdateCustomerSchema: z.ZodObject<{
     name: z.ZodOptional<z.ZodString>;
@@ -77,11 +92,17 @@ export declare const UpdateCustomerSchema: z.ZodObject<{
     creditLimit: z.ZodOptional<z.ZodNumber>;
     notes: z.ZodOptional<z.ZodString>;
     isActive: z.ZodOptional<z.ZodBoolean>;
+    customerType: z.ZodOptional<z.ZodEnum<["B2C", "B2B"]>>;
+    gstin: z.ZodOptional<z.ZodString>;
+    legalName: z.ZodOptional<z.ZodString>;
+    businessAddress: z.ZodOptional<z.ZodString>;
+    stateCode: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     email?: string | undefined;
     phone?: string | undefined;
     name?: string | undefined;
     isActive?: boolean | undefined;
+    gstin?: string | undefined;
     address?: {
         line1?: string | undefined;
         city?: string | undefined;
@@ -91,11 +112,16 @@ export declare const UpdateCustomerSchema: z.ZodObject<{
     } | undefined;
     notes?: string | undefined;
     creditLimit?: number | undefined;
+    customerType?: "B2C" | "B2B" | undefined;
+    legalName?: string | undefined;
+    businessAddress?: string | undefined;
+    stateCode?: string | undefined;
 }, {
     email?: string | undefined;
     phone?: string | undefined;
     name?: string | undefined;
     isActive?: boolean | undefined;
+    gstin?: string | undefined;
     address?: {
         line1?: string | undefined;
         city?: string | undefined;
@@ -105,6 +131,17 @@ export declare const UpdateCustomerSchema: z.ZodObject<{
     } | undefined;
     notes?: string | undefined;
     creditLimit?: number | undefined;
+    customerType?: "B2C" | "B2B" | undefined;
+    legalName?: string | undefined;
+    businessAddress?: string | undefined;
+    stateCode?: string | undefined;
+}>;
+export declare const VerifyGstinQuerySchema: z.ZodObject<{
+    gstin: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    gstin: string;
+}, {
+    gstin: string;
 }>;
 export declare const CustomerSearchQuerySchema: z.ZodObject<{
     q: z.ZodString;
@@ -161,4 +198,5 @@ export type CustomerSearchQuery = z.infer<typeof CustomerSearchQuerySchema>;
 export type CustomerListQuery = z.infer<typeof CustomerListQuerySchema>;
 export type RecordCreditPaymentInput = z.infer<typeof RecordCreditPaymentSchema>;
 export type CreditLedgerQuery = z.infer<typeof CreditLedgerQuerySchema>;
+export type VerifyGstinQuery = z.infer<typeof VerifyGstinQuerySchema>;
 //# sourceMappingURL=schema.d.ts.map

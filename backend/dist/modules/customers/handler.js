@@ -8,6 +8,7 @@ exports.getCustomer = getCustomer;
 exports.updateCustomer = updateCustomer;
 exports.getCreditLedger = getCreditLedger;
 exports.recordCreditPayment = recordCreditPayment;
+exports.verifyGstin = verifyGstin;
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../../lib/prisma");
 const typesense_1 = require("../../lib/typesense");
@@ -56,7 +57,7 @@ async function createCustomer(request, reply) {
     if (!parsed.success) {
         return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
     }
-    const { name, phone, email, address, creditLimit, notes } = parsed.data;
+    const { name, phone, email, address, creditLimit, notes, customerType, gstin, legalName, businessAddress, stateCode } = parsed.data;
     try {
         const customer = await prisma_1.prisma.customer.create({
             data: {
@@ -67,6 +68,11 @@ async function createCustomer(request, reply) {
                 address: address,
                 creditLimit,
                 notes,
+                customerType,
+                gstin,
+                legalName,
+                businessAddress,
+                stateCode,
             },
         });
         void (0, typesense_1.indexCustomer)({
@@ -339,5 +345,59 @@ async function recordCreditPayment(request, reply) {
         throw err;
     }
     return reply.status(201).send({ success: true, data: ledgerEntry });
+}
+// ── GET /v1/stores/:storeId/customers/verify-gstin ────────────
+async function verifyGstin(request, reply) {
+    const parsed = schema_1.VerifyGstinQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 },
+        });
+    }
+    const { gstin } = parsed.data;
+    const apiKey = process.env.GSTIN_API_KEY;
+    if (!apiKey) {
+        return reply.status(503).send({
+            success: false,
+            error: { code: 'API_NOT_CONFIGURED', message: 'GSTIN API key not configured', statusCode: 503 },
+        });
+    }
+    try {
+        const url = `https://api.gstinapi.in/v1/search?gstin=${encodeURIComponent(gstin)}&apikey=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const data = await res.json();
+        if (!res.ok || !data?.taxpayerInfo) {
+            return reply.status(404).send({
+                success: false,
+                error: { code: 'GSTIN_NOT_FOUND', message: 'GSTIN not found or invalid', statusCode: 404 },
+            });
+        }
+        const info = data.taxpayerInfo;
+        const pradr = info.pradr?.addr ?? {};
+        const addressParts = [
+            pradr.bno, pradr.bnm, pradr.flno, pradr.st, pradr.loc, pradr.dst, pradr.stcd,
+        ].filter(Boolean);
+        return reply.send({
+            success: true,
+            data: {
+                legalName: info.lgnm ?? '',
+                tradeName: info.tradeNam ?? info.lgnm ?? '',
+                address: addressParts.join(', '),
+                stateCode: (info.stj ?? '').slice(0, 2), // e.g. "29 - KARNATAKA" → "29"
+                taxpayerType: info.dty ?? '',
+                registrationDate: info.rgdt ?? '',
+            },
+        });
+    }
+    catch (err) {
+        if (err.name === 'TimeoutError') {
+            return reply.status(504).send({
+                success: false,
+                error: { code: 'GSTIN_TIMEOUT', message: 'GSTIN API timed out', statusCode: 504 },
+            });
+        }
+        throw err;
+    }
 }
 //# sourceMappingURL=handler.js.map

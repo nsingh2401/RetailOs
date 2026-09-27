@@ -11,23 +11,40 @@ const AddressSchema = z.object({
 
 // ── Create ─────────────────────────────────────────────────────
 export const CreateCustomerSchema = z.object({
-  name:        z.string().min(1).max(200),
-  phone:       z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
-  email:       z.string().email().optional(),
-  address:     AddressSchema.optional(),
-  creditLimit: z.number().nonnegative().default(0),
-  notes:       z.string().optional(),
+  name:            z.string().min(1).max(200),
+  phone:           z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+  email:           z.string().email().optional(),
+  address:         AddressSchema.optional(),
+  creditLimit:     z.number().nonnegative().default(0),
+  notes:           z.string().optional(),
+  // B2B fields
+  customerType:    z.enum(['B2C', 'B2B']).default('B2C'),
+  gstin:           z.string().max(15).regex(/^[0-9A-Z]{15}$/).optional(),
+  legalName:       z.string().max(200).optional(),
+  businessAddress: z.string().optional(),
+  stateCode:       z.string().max(2).optional(),
 });
 
 // ── Update ─────────────────────────────────────────────────────
 export const UpdateCustomerSchema = z.object({
-  name:        z.string().min(1).max(200).optional(),
-  phone:       z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
-  email:       z.string().email().optional(),
-  address:     AddressSchema.optional(),
-  creditLimit: z.number().nonnegative().optional(),
-  notes:       z.string().optional(),
-  isActive:    z.boolean().optional(),
+  name:            z.string().min(1).max(200).optional(),
+  phone:           z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+  email:           z.string().email().optional(),
+  address:         AddressSchema.optional(),
+  creditLimit:     z.number().nonnegative().optional(),
+  notes:           z.string().optional(),
+  isActive:        z.boolean().optional(),
+  // B2B fields
+  customerType:    z.enum(['B2C', 'B2B']).optional(),
+  gstin:           z.string().max(15).regex(/^[0-9A-Z]{15}$/).optional(),
+  legalName:       z.string().max(200).optional(),
+  businessAddress: z.string().optional(),
+  stateCode:       z.string().max(2).optional(),
+});
+
+// ── GSTIN verify ───────────────────────────────────────────────
+export const VerifyGstinQuerySchema = z.object({
+  gstin: z.string().min(15).max(15).regex(/^[0-9A-Z]{15}$/, 'GSTIN must be 15 uppercase alphanumeric characters'),
 });
 
 // ── Search ─────────────────────────────────────────────────────
@@ -64,3 +81,4 @@ export type CustomerSearchQuery      = z.infer<typeof CustomerSearchQuerySchema>
 export type CustomerListQuery        = z.infer<typeof CustomerListQuerySchema>;
 export type RecordCreditPaymentInput = z.infer<typeof RecordCreditPaymentSchema>;
 export type CreditLedgerQuery        = z.infer<typeof CreditLedgerQuerySchema>;
+export type VerifyGstinQuery         = z.infer<typeof VerifyGstinQuerySchema>;

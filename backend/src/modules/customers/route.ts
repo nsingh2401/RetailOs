@@ -13,9 +13,10 @@ export default async function customerRoutes(app: FastifyInstance) {
   app.get( '/:storeId/customers',                            { preHandler: pre }, handler.listCustomers);
   app.post('/:storeId/customers',                            { preHandler: pre }, handler.createCustomer);
 
-  // /search and /outstanding must be before /:customerId
+  // Specific sub-routes must be before /:customerId
   app.get( '/:storeId/customers/search',                     { preHandler: pre }, handler.searchCustomers);
   app.get( '/:storeId/customers/outstanding',                { preHandler: pre }, handler.getOutstandingCustomers);
+  app.get( '/:storeId/customers/verify-gstin',               { preHandler: pre }, handler.verifyGstin);
 
   app.get(   '/:storeId/customers/:customerId',              { preHandler: pre }, handler.getCustomer);
   app.patch( '/:storeId/customers/:customerId',              { preHandler: pre }, handler.updateCustomer);

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreditLedgerQuerySchema = exports.RecordCreditPaymentSchema = exports.CustomerListQuerySchema = exports.CustomerSearchQuerySchema = exports.UpdateCustomerSchema = exports.CreateCustomerSchema = void 0;
+exports.CreditLedgerQuerySchema = exports.RecordCreditPaymentSchema = exports.CustomerListQuerySchema = exports.CustomerSearchQuerySchema = exports.VerifyGstinQuerySchema = exports.UpdateCustomerSchema = exports.CreateCustomerSchema = void 0;
 const zod_1 = require("zod");
 // ── Address sub-schema ─────────────────────────────────────────
 const AddressSchema = zod_1.z.object({
@@ -18,6 +18,12 @@ exports.CreateCustomerSchema = zod_1.z.object({
     address: AddressSchema.optional(),
     creditLimit: zod_1.z.number().nonnegative().default(0),
     notes: zod_1.z.string().optional(),
+    // B2B fields
+    customerType: zod_1.z.enum(['B2C', 'B2B']).default('B2C'),
+    gstin: zod_1.z.string().max(15).regex(/^[0-9A-Z]{15}$/).optional(),
+    legalName: zod_1.z.string().max(200).optional(),
+    businessAddress: zod_1.z.string().optional(),
+    stateCode: zod_1.z.string().max(2).optional(),
 });
 // ── Update ─────────────────────────────────────────────────────
 exports.UpdateCustomerSchema = zod_1.z.object({
@@ -28,6 +34,16 @@ exports.UpdateCustomerSchema = zod_1.z.object({
     creditLimit: zod_1.z.number().nonnegative().optional(),
     notes: zod_1.z.string().optional(),
     isActive: zod_1.z.boolean().optional(),
+    // B2B fields
+    customerType: zod_1.z.enum(['B2C', 'B2B']).optional(),
+    gstin: zod_1.z.string().max(15).regex(/^[0-9A-Z]{15}$/).optional(),
+    legalName: zod_1.z.string().max(200).optional(),
+    businessAddress: zod_1.z.string().optional(),
+    stateCode: zod_1.z.string().max(2).optional(),
+});
+// ── GSTIN verify ───────────────────────────────────────────────
+exports.VerifyGstinQuerySchema = zod_1.z.object({
+    gstin: zod_1.z.string().min(15).max(15).regex(/^[0-9A-Z]{15}$/, 'GSTIN must be 15 uppercase alphanumeric characters'),
 });
 // ── Search ─────────────────────────────────────────────────────
 exports.CustomerSearchQuerySchema = zod_1.z.object({

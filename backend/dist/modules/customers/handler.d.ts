@@ -50,4 +50,12 @@ export declare function recordCreditPayment(request: FastifyRequest<{
     };
     Body: RecordCreditPaymentInput;
 }>, reply: FastifyReply): Promise<never>;
+export declare function verifyGstin(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+    Querystring: {
+        gstin?: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map

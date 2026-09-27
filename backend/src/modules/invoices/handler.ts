@@ -34,14 +34,30 @@ export async function createInvoice(
     if (existing) return reply.status(200).send({ success: true, data: existing });
   }
 
-  // Auto-generate invoice number: INV-YYYYMM-XXXXX
-  const count = await prisma.invoice.count({ where: { storeId } });
+  // ── Invoice number: INV/{FY}/{NNNN} e.g. INV/26-27/0001 ──────
   const now = new Date();
   const invoiceDate = body.invoiceDate
     ? new Date(`${body.invoiceDate}T12:00:00.000Z`)
     : new Date(`${now.toISOString().slice(0, 10)}T12:00:00.000Z`);
+
+  // Financial year: April (month 3 in 0-indexed) starts new FY
+  const month  = now.getMonth();
+  const fyYear = month >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const fy     = `${String(fyYear).slice(2)}-${String(fyYear + 1).slice(2)}`;
+  const fyPrefix = `INV/${fy}/`;
+
+  const [fyCount, storeSettings] = await Promise.all([
+    prisma.invoice.count({ where: { storeId, invoiceNumber: { startsWith: fyPrefix } } }),
+    prisma.store.findUnique({ where: { storeId }, select: { invoiceStartNumber: true } }),
+  ]);
+
+  // Honor invoiceStartNumber only for the very first invoice of this FY
+  const nextSeq = fyCount === 0 && (storeSettings?.invoiceStartNumber ?? 0) > 0
+    ? storeSettings!.invoiceStartNumber!
+    : fyCount + 1;
+
   const invoiceNumber = body.invoiceNumber
-    ?? `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(count + 1).padStart(5, '0')}`;
+    ?? `${fyPrefix}${String(nextSeq).padStart(4, '0')}`;
 
   // Fetch product name snapshots for all variants
   const variantIds = [...new Set(body.lineItems.map(i => i.variantId))];
