@@ -162,11 +162,14 @@ async function searchProductsForDiscount(request, reply) {
         if (hits.length > 0) {
             return reply.send({
                 success: true,
-                data: hits.map((h) => ({
-                    productId: h.productId,
-                    name: h.name,
-                    internalSku: h.internalSku,
-                })),
+                data: hits.map((h) => {
+                    const doc = h.document ?? h;
+                    return {
+                        productId: doc.productId,
+                        name: doc.name,
+                        internalSku: doc.internalSku,
+                    };
+                }),
             });
         }
     }
