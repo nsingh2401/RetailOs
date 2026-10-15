@@ -282,3 +282,221 @@ export async function promoteToMaster(
     },
   });
 }
+
+// ── GET /v1/admin/master/brands ───────────────────────────────────
+export async function listMasterBrands(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const qs       = request.query as Record<string, string>;
+  const search   = qs.search?.trim();
+  const industry = qs.industry?.trim();
+
+  const brands = await prisma.masterBrand.findMany({
+    where: {
+      isActive: true,
+      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+    },
+    orderBy: [{ isPopular: 'desc' }, { name: 'asc' }],
+  });
+
+  const filtered = industry
+    ? brands.filter(b => {
+        const inds = Array.isArray(b.industries) ? (b.industries as string[]) : [];
+        return inds.includes(industry);
+      })
+    : brands;
+
+  return reply.send({ success: true, data: filtered });
+}
+
+// ── POST /v1/admin/master/brands ──────────────────────────────────
+export async function createMasterBrand(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const body = request.body as {
+    name?:       string;
+    industries?: string[];
+    isPopular?:  boolean;
+  } | null;
+
+  const name = body?.name?.trim();
+  if (!name) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'name is required', statusCode: 400 },
+    });
+  }
+
+  try {
+    const brand = await prisma.masterBrand.create({
+      data: {
+        name,
+        industries: body?.industries ?? [],
+        isPopular:  body?.isPopular ?? false,
+        isActive:   true,
+      },
+    });
+    return reply.status(201).send({ success: true, data: brand });
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return reply.status(409).send({
+        success: false,
+        error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+      });
+    }
+    throw err;
+  }
+}
+
+// ── PATCH /v1/admin/master/brands/:id ────────────────────────────
+export async function updateMasterBrand(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  const { id } = request.params;
+  const body   = request.body as {
+    name?:       string;
+    industries?: string[];
+    isPopular?:  boolean;
+    isActive?:   boolean;
+  } | null;
+
+  const existing = await prisma.masterBrand.findUnique({ where: { id } });
+  if (!existing) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Master brand not found', statusCode: 404 },
+    });
+  }
+
+  try {
+    const updated = await prisma.masterBrand.update({
+      where: { id },
+      data: {
+        ...(body?.name       !== undefined && { name:       body.name.trim() }),
+        ...(body?.industries !== undefined && { industries: body.industries }),
+        ...(body?.isPopular  !== undefined && { isPopular:  body.isPopular }),
+        ...(body?.isActive   !== undefined && { isActive:   body.isActive }),
+      },
+    });
+    return reply.send({ success: true, data: updated });
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return reply.status(409).send({
+        success: false,
+        error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+      });
+    }
+    throw err;
+  }
+}
+
+// ── DELETE /v1/admin/master/brands/:id ───────────────────────────
+export async function deleteMasterBrand(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  const { id } = request.params;
+
+  const existing = await prisma.masterBrand.findUnique({ where: { id } });
+  if (!existing) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Master brand not found', statusCode: 404 },
+    });
+  }
+
+  await prisma.masterBrand.update({ where: { id }, data: { isActive: false } });
+  return reply.send({ success: true, data: { deleted: true } });
+}
+
+// ── GET /v1/admin/master/brands/store-created ─────────────────────
+export async function listBrandPromotionCandidates(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const qs        = request.query as Record<string, string>;
+  const threshold = Math.max(1, parseInt(qs.threshold ?? '5', 10));
+
+  const rows = await prisma.$queryRaw<{
+    name:        string;
+    store_count: bigint;
+  }[]>(Prisma.sql`
+    SELECT
+      b.name,
+      COUNT(DISTINCT b.store_id) AS store_count
+    FROM  brands b
+    WHERE b.is_active        = true
+      AND b.master_brand_id  IS NULL
+    GROUP BY b.name
+    HAVING COUNT(DISTINCT b.store_id) >= ${threshold}
+    ORDER BY store_count DESC, b.name ASC
+  `);
+
+  return reply.send({
+    success: true,
+    data: rows.map(r => ({
+      name:       r.name,
+      storeCount: Number(r.store_count),
+    })),
+  });
+}
+
+// ── POST /v1/admin/master/brands/promote ─────────────────────────
+export async function promoteBrandToMaster(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const body = request.body as {
+    name?:       string;
+    industries?: string[];
+  } | null;
+
+  const name = body?.name?.trim();
+  if (!name) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'name is required', statusCode: 400 },
+    });
+  }
+
+  let masterBrand: { id: string; name: string };
+  try {
+    masterBrand = await prisma.masterBrand.create({
+      data: {
+        name,
+        industries: body?.industries ?? [],
+        isPopular:  false,
+        isActive:   true,
+      },
+    });
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return reply.status(409).send({
+        success: false,
+        error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+      });
+    }
+    throw err;
+  }
+
+  // Link existing store brands with this name to the new master brand
+  const result = await prisma.brand.updateMany({
+    where: {
+      name:          { equals: name, mode: 'insensitive' },
+      masterBrandId: null,
+      isActive:      true,
+    },
+    data: { masterBrandId: masterBrand.id },
+  });
+
+  return reply.status(201).send({
+    success: true,
+    data: {
+      masterBrand,
+      linkedStores: result.count,
+    },
+  });
+}

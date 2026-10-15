@@ -5,6 +5,12 @@ exports.addMasterCategory = addMasterCategory;
 exports.deleteMasterCategory = deleteMasterCategory;
 exports.listCustomCategoryPromotionCandidates = listCustomCategoryPromotionCandidates;
 exports.promoteToMaster = promoteToMaster;
+exports.listMasterBrands = listMasterBrands;
+exports.createMasterBrand = createMasterBrand;
+exports.updateMasterBrand = updateMasterBrand;
+exports.deleteMasterBrand = deleteMasterBrand;
+exports.listBrandPromotionCandidates = listBrandPromotionCandidates;
+exports.promoteBrandToMaster = promoteBrandToMaster;
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../../../lib/prisma");
 // ── GET /v1/admin/master/categories ──────────────────────────────
@@ -228,6 +234,173 @@ async function promoteToMaster(request, reply) {
             masterCategory: masterCat,
             provisionedStores: provisionedCount,
             totalStores: stores.length,
+        },
+    });
+}
+// ── GET /v1/admin/master/brands ───────────────────────────────────
+async function listMasterBrands(request, reply) {
+    const qs = request.query;
+    const search = qs.search?.trim();
+    const industry = qs.industry?.trim();
+    const brands = await prisma_1.prisma.masterBrand.findMany({
+        where: {
+            isActive: true,
+            ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
+        },
+        orderBy: [{ isPopular: 'desc' }, { name: 'asc' }],
+    });
+    const filtered = industry
+        ? brands.filter(b => {
+            const inds = Array.isArray(b.industries) ? b.industries : [];
+            return inds.includes(industry);
+        })
+        : brands;
+    return reply.send({ success: true, data: filtered });
+}
+// ── POST /v1/admin/master/brands ──────────────────────────────────
+async function createMasterBrand(request, reply) {
+    const body = request.body;
+    const name = body?.name?.trim();
+    if (!name) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'name is required', statusCode: 400 },
+        });
+    }
+    try {
+        const brand = await prisma_1.prisma.masterBrand.create({
+            data: {
+                name,
+                industries: body?.industries ?? [],
+                isPopular: body?.isPopular ?? false,
+                isActive: true,
+            },
+        });
+        return reply.status(201).send({ success: true, data: brand });
+    }
+    catch (err) {
+        if (err.code === 'P2002') {
+            return reply.status(409).send({
+                success: false,
+                error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+            });
+        }
+        throw err;
+    }
+}
+// ── PATCH /v1/admin/master/brands/:id ────────────────────────────
+async function updateMasterBrand(request, reply) {
+    const { id } = request.params;
+    const body = request.body;
+    const existing = await prisma_1.prisma.masterBrand.findUnique({ where: { id } });
+    if (!existing) {
+        return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Master brand not found', statusCode: 404 },
+        });
+    }
+    try {
+        const updated = await prisma_1.prisma.masterBrand.update({
+            where: { id },
+            data: {
+                ...(body?.name !== undefined && { name: body.name.trim() }),
+                ...(body?.industries !== undefined && { industries: body.industries }),
+                ...(body?.isPopular !== undefined && { isPopular: body.isPopular }),
+                ...(body?.isActive !== undefined && { isActive: body.isActive }),
+            },
+        });
+        return reply.send({ success: true, data: updated });
+    }
+    catch (err) {
+        if (err.code === 'P2002') {
+            return reply.status(409).send({
+                success: false,
+                error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+            });
+        }
+        throw err;
+    }
+}
+// ── DELETE /v1/admin/master/brands/:id ───────────────────────────
+async function deleteMasterBrand(request, reply) {
+    const { id } = request.params;
+    const existing = await prisma_1.prisma.masterBrand.findUnique({ where: { id } });
+    if (!existing) {
+        return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Master brand not found', statusCode: 404 },
+        });
+    }
+    await prisma_1.prisma.masterBrand.update({ where: { id }, data: { isActive: false } });
+    return reply.send({ success: true, data: { deleted: true } });
+}
+// ── GET /v1/admin/master/brands/store-created ─────────────────────
+async function listBrandPromotionCandidates(request, reply) {
+    const qs = request.query;
+    const threshold = Math.max(1, parseInt(qs.threshold ?? '5', 10));
+    const rows = await prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
+    SELECT
+      b.name,
+      COUNT(DISTINCT b.store_id) AS store_count
+    FROM  brands b
+    WHERE b.is_active        = true
+      AND b.master_brand_id  IS NULL
+    GROUP BY b.name
+    HAVING COUNT(DISTINCT b.store_id) >= ${threshold}
+    ORDER BY store_count DESC, b.name ASC
+  `);
+    return reply.send({
+        success: true,
+        data: rows.map(r => ({
+            name: r.name,
+            storeCount: Number(r.store_count),
+        })),
+    });
+}
+// ── POST /v1/admin/master/brands/promote ─────────────────────────
+async function promoteBrandToMaster(request, reply) {
+    const body = request.body;
+    const name = body?.name?.trim();
+    if (!name) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'name is required', statusCode: 400 },
+        });
+    }
+    let masterBrand;
+    try {
+        masterBrand = await prisma_1.prisma.masterBrand.create({
+            data: {
+                name,
+                industries: body?.industries ?? [],
+                isPopular: false,
+                isActive: true,
+            },
+        });
+    }
+    catch (err) {
+        if (err.code === 'P2002') {
+            return reply.status(409).send({
+                success: false,
+                error: { code: 'DUPLICATE_BRAND', message: 'A master brand with this name already exists', statusCode: 409 },
+            });
+        }
+        throw err;
+    }
+    // Link existing store brands with this name to the new master brand
+    const result = await prisma_1.prisma.brand.updateMany({
+        where: {
+            name: { equals: name, mode: 'insensitive' },
+            masterBrandId: null,
+            isActive: true,
+        },
+        data: { masterBrandId: masterBrand.id },
+    });
+    return reply.status(201).send({
+        success: true,
+        data: {
+            masterBrand,
+            linkedStores: result.count,
         },
     });
 }

@@ -6,6 +6,12 @@ import {
   deleteMasterCategory,
   listCustomCategoryPromotionCandidates,
   promoteToMaster,
+  listMasterBrands,
+  createMasterBrand,
+  updateMasterBrand,
+  deleteMasterBrand,
+  listBrandPromotionCandidates,
+  promoteBrandToMaster,
 } from './handler';
 
 export default async function adminMasterRoutes(
@@ -32,4 +38,23 @@ export default async function adminMasterRoutes(
   // Promote custom → master
   // POST /v1/admin/master/promote
   app.post('/promote', promoteToMaster);
+
+  // Brands — store-created + promote BEFORE /:id to avoid param conflict
+  // GET  /v1/admin/master/brands/store-created?threshold=5
+  app.get('/brands/store-created', listBrandPromotionCandidates);
+
+  // POST /v1/admin/master/brands/promote
+  app.post('/brands/promote', promoteBrandToMaster);
+
+  // GET  /v1/admin/master/brands?search=&industry=
+  app.get('/brands', listMasterBrands);
+
+  // POST /v1/admin/master/brands
+  app.post('/brands', createMasterBrand);
+
+  // PATCH /v1/admin/master/brands/:id
+  app.patch('/brands/:id', updateMasterBrand);
+
+  // DELETE /v1/admin/master/brands/:id
+  app.delete('/brands/:id', deleteMasterBrand);
 }

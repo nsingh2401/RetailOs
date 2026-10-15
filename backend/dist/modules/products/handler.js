@@ -763,7 +763,7 @@ async function createBrand(request, reply) {
             data: {
                 storeId,
                 name: body.name,
-                industries: store?.industryType ?? undefined,
+                industries: store?.industryType ? `["${store.industryType}"]` : undefined,
                 manufacturer: body.manufacturer,
                 contactInfo: body.contactInfo,
             },

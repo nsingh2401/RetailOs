@@ -20,5 +20,18 @@ async function adminMasterRoutes(app) {
     // Promote custom → master
     // POST /v1/admin/master/promote
     app.post('/promote', handler_1.promoteToMaster);
+    // Brands — store-created + promote BEFORE /:id to avoid param conflict
+    // GET  /v1/admin/master/brands/store-created?threshold=5
+    app.get('/brands/store-created', handler_1.listBrandPromotionCandidates);
+    // POST /v1/admin/master/brands/promote
+    app.post('/brands/promote', handler_1.promoteBrandToMaster);
+    // GET  /v1/admin/master/brands?search=&industry=
+    app.get('/brands', handler_1.listMasterBrands);
+    // POST /v1/admin/master/brands
+    app.post('/brands', handler_1.createMasterBrand);
+    // PATCH /v1/admin/master/brands/:id
+    app.patch('/brands/:id', handler_1.updateMasterBrand);
+    // DELETE /v1/admin/master/brands/:id
+    app.delete('/brands/:id', handler_1.deleteMasterBrand);
 }
 //# sourceMappingURL=route.js.map
