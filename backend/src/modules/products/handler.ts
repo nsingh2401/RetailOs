@@ -212,11 +212,19 @@ export async function searchProducts(
   }
   const { q, limit } = parsed.data;
 
+  // Detect FMCG store once (shared by both paths)
+  const storeInfo = await prisma.store.findUnique({
+    where:  { storeId },
+    select: { industryType: true },
+  });
+  const fmcgSet = new Set(['PHARMACY', 'GROCERY', 'BAKERY', 'TEA_CAFE', 'PAN_SHOP']);
+  const isFmcgStore = fmcgSet.has(storeInfo?.industryType ?? '');
+
   try {
     const hits = await tsSearchProducts(
         storeId, q, limit);
     // Typesense available — enrich with
-    // default variantId
+    // default variantId + FEFO batch for FMCG
     const products = hits.map(
         (h: any) => h.document);
     const enriched = await Promise.all(
@@ -245,6 +253,27 @@ export async function searchProducts(
             },
           }),
         ]);
+
+        let expiryDate:  Date | null = null;
+        let batchNumber: string | null = null;
+        if (isFmcgStore && variant?.variantId) {
+          const batch = await prisma.batch.findFirst({
+            where: {
+              variantId: variant.variantId,
+              storeId,
+              isExpired: false,
+              OR: [
+                { expiryDate: null },
+                { expiryDate: { gte: new Date() } },
+              ],
+            },
+            orderBy: { expiryDate: 'asc' },
+            select:  { expiryDate: true, batchNumber: true },
+          });
+          expiryDate  = batch?.expiryDate  ?? null;
+          batchNumber = batch?.batchNumber ?? null;
+        }
+
         return {
           ...p,
           variantId:         variant?.variantId ?? null,
@@ -254,67 +283,105 @@ export async function searchProducts(
           taxRate:     product?.taxRule
               ? Number(product.taxRule.totalRate)
               : null,
+          expiryDate,
+          batchNumber,
         };
       }),
     );
-    if (enriched.length > 0) {
-      console.log('[searchProducts/ts] first row keys:', Object.keys(enriched[0]));
-      console.log('[searchProducts/ts] first row:', JSON.stringify(enriched[0]));
-    }
     return reply.send({
       success: true,
       data: enriched,
     });
   } catch {
-    // Fallback to PostgreSQL if Typesense
-    // unavailable
-    const rawProducts =
-        await prisma.$queryRaw<any[]>`
-      SELECT
-        p.product_id      AS "productId",
-        p.name,
-        p.internal_sku    AS "internalSku",
-        p.hsn_code        AS "hsnCode",
-        p.selling_price   AS "sellingPrice",
-        p.mrp,
-        p.tax_rule_id     AS "taxRuleId",
-        p.unit_of_measure AS "unitOfMeasure",
-        p.pricing_type    AS "pricingType",
-        tr.total_rate     AS "taxRate",
-        (SELECT pv.variant_id
-         FROM product_variants pv
-         WHERE pv.product_id = p.product_id
-           AND pv.store_id = ${storeId}::uuid
-           AND pv.is_active = true
-         LIMIT 1) AS "variantId",
-        (SELECT pv.variant_attributes
-         FROM product_variants pv
-         WHERE pv.product_id = p.product_id
-           AND pv.store_id = ${storeId}::uuid
-           AND pv.is_active = true
-         LIMIT 1) AS "variantAttributes"
-      FROM products p
-      LEFT JOIN tax_rules tr
-        ON tr.tax_rule_id = p.tax_rule_id
-      WHERE p.store_id = ${storeId}::uuid
-        AND p.is_active = true
-        AND (
-          p.name         ILIKE ${'%' + q + '%'}
-          OR p.internal_sku ILIKE ${'%' + q + '%'}
-        )
-      ORDER BY p.name ASC
-      LIMIT ${limit}
-    `;
-    const products = rawProducts;
-    if (products.length > 0) {
-      console.log('[searchProducts] first row keys:', Object.keys(products[0]));
-      console.log('[searchProducts] first row:', JSON.stringify(products[0]));
-    }
+    // Fallback to PostgreSQL if Typesense unavailable
+    // For FMCG stores: FEFO sort + exclude expired batches
+    const isFmcg = isFmcgStore;
 
-    return reply.send({
-      success: true,
-      data: products,
-    });
+    const rawProducts = isFmcg
+      ? await prisma.$queryRaw<any[]>`
+          SELECT
+            p.product_id      AS "productId",
+            p.name,
+            p.internal_sku    AS "internalSku",
+            p.hsn_code        AS "hsnCode",
+            p.selling_price   AS "sellingPrice",
+            p.mrp,
+            p.tax_rule_id     AS "taxRuleId",
+            p.unit_of_measure AS "unitOfMeasure",
+            p.pricing_type    AS "pricingType",
+            tr.total_rate     AS "taxRate",
+            pv.variant_id     AS "variantId",
+            pv.variant_attributes AS "variantAttributes",
+            b.expiry_date     AS "expiryDate",
+            b.batch_number    AS "batchNumber"
+          FROM products p
+          LEFT JOIN tax_rules tr
+            ON tr.tax_rule_id = p.tax_rule_id
+          LEFT JOIN LATERAL (
+            SELECT variant_id, variant_attributes
+            FROM product_variants
+            WHERE product_id = p.product_id
+              AND store_id   = ${storeId}::uuid
+              AND is_active  = true
+            LIMIT 1
+          ) pv ON true
+          LEFT JOIN LATERAL (
+            SELECT expiry_date, batch_number
+            FROM batches
+            WHERE variant_id  = pv.variant_id
+              AND store_id     = ${storeId}::uuid
+              AND is_expired   = false
+              AND (expiry_date IS NULL OR expiry_date >= NOW())
+            ORDER BY expiry_date ASC NULLS LAST
+            LIMIT 1
+          ) b ON true
+          WHERE p.store_id = ${storeId}::uuid
+            AND p.is_active = true
+            AND (
+              p.name         ILIKE ${'%' + q + '%'}
+              OR p.internal_sku ILIKE ${'%' + q + '%'}
+            )
+          ORDER BY b.expiry_date ASC NULLS LAST, p.name ASC
+          LIMIT ${limit}
+        `
+      : await prisma.$queryRaw<any[]>`
+          SELECT
+            p.product_id      AS "productId",
+            p.name,
+            p.internal_sku    AS "internalSku",
+            p.hsn_code        AS "hsnCode",
+            p.selling_price   AS "sellingPrice",
+            p.mrp,
+            p.tax_rule_id     AS "taxRuleId",
+            p.unit_of_measure AS "unitOfMeasure",
+            p.pricing_type    AS "pricingType",
+            tr.total_rate     AS "taxRate",
+            (SELECT pv.variant_id
+             FROM product_variants pv
+             WHERE pv.product_id = p.product_id
+               AND pv.store_id   = ${storeId}::uuid
+               AND pv.is_active  = true
+             LIMIT 1) AS "variantId",
+            (SELECT pv.variant_attributes
+             FROM product_variants pv
+             WHERE pv.product_id = p.product_id
+               AND pv.store_id   = ${storeId}::uuid
+               AND pv.is_active  = true
+             LIMIT 1) AS "variantAttributes"
+          FROM products p
+          LEFT JOIN tax_rules tr
+            ON tr.tax_rule_id = p.tax_rule_id
+          WHERE p.store_id = ${storeId}::uuid
+            AND p.is_active = true
+            AND (
+              p.name         ILIKE ${'%' + q + '%'}
+              OR p.internal_sku ILIKE ${'%' + q + '%'}
+            )
+          ORDER BY p.name ASC
+          LIMIT ${limit}
+        `;
+
+    return reply.send({ success: true, data: rawProducts });
   }
 }
 
@@ -826,10 +893,16 @@ export async function createBrand(
   const body = parsed.data;
 
   try {
+    const store = await prisma.store.findUnique({
+      where:  { storeId },
+      select: { industryType: true },
+    });
+
     const brand = await prisma.brand.create({
       data: {
         storeId,
         name:         body.name,
+        industries:   store?.industryType ?? undefined,
         manufacturer: body.manufacturer,
         contactInfo:  body.contactInfo as any,
       },

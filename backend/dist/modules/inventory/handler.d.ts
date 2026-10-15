@@ -5,6 +5,16 @@ export declare function getStockLevels(request: FastifyRequest<{
     };
     Querystring: Record<string, unknown>;
 }>, reply: FastifyReply): Promise<never>;
+export declare function getExpiredItems(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
+export declare function clearExpiredStock(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 export declare function getLowStock(request: FastifyRequest<{
     Params: {
         storeId: string;

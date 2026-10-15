@@ -74,6 +74,7 @@ const route_23 = __importDefault(require("./modules/tickets/route"));
 const route_24 = __importDefault(require("./modules/ai/route"));
 const route_25 = __importDefault(require("./modules/chat/route"));
 const route_26 = __importDefault(require("./modules/import/route"));
+const route_27 = __importDefault(require("./modules/discounts/route"));
 async function buildApp() {
     const app = (0, fastify_1.default)({ logger: logger_1.logger });
     // ── File uploads & static serving ─────────────────────────
@@ -142,6 +143,7 @@ async function buildApp() {
     await app.register(route_24.default, { prefix: '/v1/ai' });
     await app.register(route_25.default, { prefix: '/v1/stores' });
     await app.register(route_26.default, { prefix: '/v1/stores' }); // /v1/stores/:storeId/import/tally
+    await app.register(route_27.default, { prefix: '/v1/stores' }); // /v1/stores/:storeId/discounts
     // ── WebSocket ─────────────────────────────────────────────
     app.get('/v1/ws', { websocket: true }, handler_1.default);
     // ── Global error handler ──────────────────────────────────

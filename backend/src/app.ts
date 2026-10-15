@@ -36,6 +36,7 @@ import ticketRoutes        from './modules/tickets/route';
 import aiRoutes            from './modules/ai/route';
 import chatRoutes          from './modules/chat/route';
 import importRoutes        from './modules/import/route';
+import discountRoutes      from './modules/discounts/route';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: logger as any });
@@ -117,6 +118,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(aiRoutes,             { prefix: '/v1/ai'              });
   await app.register(chatRoutes,           { prefix: '/v1/stores'          });
   await app.register(importRoutes,         { prefix: '/v1/stores'          }); // /v1/stores/:storeId/import/tally
+  await app.register(discountRoutes,       { prefix: '/v1/stores'          }); // /v1/stores/:storeId/discounts
 
   // ── WebSocket ─────────────────────────────────────────────
   app.get('/v1/ws', { websocket: true }, wsHandler as any);

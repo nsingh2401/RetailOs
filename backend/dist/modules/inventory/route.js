@@ -41,9 +41,11 @@ const handler = __importStar(require("./handler"));
 const pre = [rateLimit_1.rateLimitMiddleware, auth_1.authMiddleware, store_1.storeMiddleware];
 async function inventoryRoutes(app) {
     // â”€â”€ IMPORTANT: specific routes registered BEFORE parameterized ones â”€â”€
-    // Inventory â€” low-stock and adjust before /:variantId
+    // Inventory â€” specific routes before /:variantId
     app.get('/:storeId/inventory/low-stock', { preHandler: pre }, handler.getLowStock);
     app.post('/:storeId/inventory/adjust', { preHandler: pre }, handler.adjustStock);
+    app.get('/:storeId/inventory/expired', { preHandler: pre }, handler.getExpiredItems);
+    app.delete('/:storeId/inventory/expired', { preHandler: pre }, handler.clearExpiredStock);
     app.get('/:storeId/inventory', { preHandler: pre }, handler.getStockLevels);
     app.get('/:storeId/inventory/:variantId', { preHandler: pre }, handler.getVariantStock);
     app.get('/:storeId/inventory/:variantId/movements', { preHandler: pre }, handler.getMovementHistory);

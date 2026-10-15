@@ -29,6 +29,7 @@ export async function getStockLevels(
   const lowStockOnly =
     request.query['lowStockOnly'] === 'true'
     || request.query['lowStockOnly'] === true;
+  const productIdFilter = request.query['productId'] as string | undefined;
 
   type StockRow = {
     store_id:           string;
@@ -125,7 +126,144 @@ export async function getStockLevels(
         WHERE v.store_id = ${storeId}::uuid
         ORDER BY v.updated_at DESC`;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const in30  = new Date(today);
+  in30.setDate(in30.getDate() + 30);
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    isExpired:      r.expiry_date != null && r.expiry_date < today,
+    isExpiringSoon: r.expiry_date != null && r.expiry_date >= today && r.expiry_date <= in30,
+  }));
+
+  const data = productIdFilter
+    ? enriched.filter((r) => r.product_id === productIdFilter)
+    : enriched;
+
+  return reply.send({ success: true, data });
+}
+
+// GET /:storeId/inventory/expired
+export async function getExpiredItems(
+  request: FastifyRequest<{ Params: { storeId: string } }>,
+  reply: FastifyReply,
+) {
+  const storeId = request.storeId;
+
+  type ExpiredRow = {
+    batch_id:     string;
+    variant_id:   string;
+    product_name: string;
+    variant_sku:  string;
+    batch_number: string | null;
+    expiry_date:  Date;
+    remaining_qty: number;
+  };
+
+  const rows = await prisma.$queryRaw<ExpiredRow[]>`
+    SELECT
+      b.batch_id,
+      b.variant_id,
+      p.name        AS product_name,
+      pv.variant_sku,
+      b.batch_number,
+      b.expiry_date,
+      b.remaining_qty
+    FROM batches b
+    JOIN product_variants pv
+      ON pv.variant_id = b.variant_id
+    JOIN products p
+      ON p.product_id = pv.product_id
+    WHERE b.store_id     = ${storeId}::uuid
+      AND b.expiry_date  < NOW()
+      AND b.remaining_qty > 0
+      AND b.is_expired   = false
+    ORDER BY b.expiry_date ASC
+  `;
+
   return reply.send({ success: true, data: rows });
+}
+
+// DELETE /:storeId/inventory/expired
+export async function clearExpiredStock(
+  request: FastifyRequest<{ Params: { storeId: string } }>,
+  reply: FastifyReply,
+) {
+  const storeId = request.storeId;
+
+  if (!isManager(request.storeRole)) {
+    return reply.status(403).send({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'MANAGER role required', statusCode: 403 },
+    });
+  }
+
+  type ExpiredBatch = {
+    batch_id:     string;
+    variant_id:   string;
+    remaining_qty: number;
+  };
+
+  const expired = await prisma.$queryRaw<ExpiredBatch[]>`
+    SELECT batch_id, variant_id, remaining_qty
+    FROM batches
+    WHERE store_id     = ${storeId}::uuid
+      AND expiry_date  < NOW()
+      AND remaining_qty > 0
+      AND is_expired   = false
+  `;
+
+  if (expired.length === 0) {
+    return reply.send({ success: true, data: { batchesCleared: 0, unitsRemoved: 0 } });
+  }
+
+  const batchIds  = expired.map((b) => b.batch_id);
+  const totalUnits = expired.reduce((s, b) => s + Number(b.remaining_qty), 0);
+
+  await prisma.$transaction(async (tx) => {
+    // Mark batches expired + zero out remaining_qty
+    await tx.$executeRaw`
+      UPDATE batches
+      SET is_expired = true, remaining_qty = 0
+      WHERE batch_id = ANY(${batchIds}::uuid[])
+    `;
+
+    // One movement record per variant
+    const variantMap = new Map<string, number>();
+    for (const b of expired) {
+      variantMap.set(b.variant_id, (variantMap.get(b.variant_id) ?? 0) + Number(b.remaining_qty));
+    }
+
+    for (const [variantId, qty] of variantMap) {
+      const inv = await tx.inventory.findUnique({
+        where: { storeId_variantId: { storeId, variantId } },
+      });
+      if (!inv) continue;
+      const before = Number(inv.quantity);
+      const after  = Math.max(0, before - qty);
+      await tx.inventory.update({
+        where: { storeId_variantId: { storeId, variantId } },
+        data:  { quantity: after },
+      });
+      await tx.inventoryMovement.create({
+        data: {
+          storeId,
+          variantId,
+          movementType:   'EXPIRED_CLEARANCE',
+          quantityDelta:  -qty,
+          quantityBefore: before,
+          quantityAfter:  after,
+          performedBy:    (request as any).authUser.userId,
+          referenceType:  'EXPIRED_CLEARANCE',
+          notes:          `Expired stock cleared — ${expired.filter(b => b.variant_id === variantId).length} batch(es)`,
+        },
+      });
+    }
+  });
+
+  await cacheDelete(`low_stock:${storeId}`);
+  return reply.send({ success: true, data: { batchesCleared: batchIds.length, unitsRemoved: totalUnits } });
 }
 
 // GET /:storeId/inventory/low-stock
