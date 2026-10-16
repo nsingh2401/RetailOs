@@ -504,3 +504,53 @@ export async function verifyGstin(
     throw err;
   }
 }
+
+// ── POST /v1/stores/:storeId/customers/:customerId/redeem-loyalty ─
+export async function redeemLoyaltyPoints(
+  request: FastifyRequest<{ Params: { storeId: string; customerId: string }; Body: unknown }>,
+  reply: FastifyReply,
+) {
+  const storeId        = request.storeId;
+  const { customerId } = request.params;
+  const body           = request.body as { points?: number } | null;
+  const points         = Number(body?.points ?? 0);
+
+  if (!Number.isInteger(points) || points <= 0) {
+    return reply.status(400).send({
+      success: false,
+      error: { code: 'INVALID_POINTS', message: 'points must be a positive integer', statusCode: 400 },
+    });
+  }
+
+  const customer = await prisma.customer.findFirst({
+    where: { customerId, storeId, isActive: true },
+  });
+
+  if (!customer) {
+    return reply.status(404).send({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Customer not found', statusCode: 404 },
+    });
+  }
+
+  if (customer.loyaltyPoints < points) {
+    return reply.status(400).send({
+      success: false,
+      error: {
+        code:       'INSUFFICIENT_POINTS',
+        message:    `Only ${customer.loyaltyPoints} points available`,
+        statusCode: 400,
+      },
+    });
+  }
+
+  const updated = await prisma.customer.update({
+    where: { customerId },
+    data:  { loyaltyPoints: { decrement: points } },
+  });
+
+  return reply.send({
+    success: true,
+    data: { loyaltyPoints: updated.loyaltyPoints, redeemed: points },
+  });
+}

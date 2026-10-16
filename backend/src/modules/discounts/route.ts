@@ -9,6 +9,7 @@ const pre = [rateLimitMiddleware, authMiddleware, storeMiddleware];
 
 export default async function discountRoutes(app: FastifyInstance) {
   // specific routes before parameterized
+  app.get(   '/:storeId/discounts/active',          { preHandler: pre }, handler.listActiveDiscounts);
   app.get(   '/:storeId/discounts/products/search', { preHandler: pre }, handler.searchProductsForDiscount);
   app.get(   '/:storeId/discounts',                 { preHandler: pre }, handler.listDiscounts);
   app.post(  '/:storeId/discounts',                 { preHandler: pre }, handler.createDiscount);

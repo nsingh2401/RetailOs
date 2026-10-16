@@ -18,7 +18,8 @@ export default async function customerRoutes(app: FastifyInstance) {
   app.get( '/:storeId/customers/outstanding',                { preHandler: pre }, handler.getOutstandingCustomers);
   app.get( '/:storeId/customers/verify-gstin',               { preHandler: pre }, handler.verifyGstin);
 
-  app.get(   '/:storeId/customers/:customerId',              { preHandler: pre }, handler.getCustomer);
+  app.get(   '/:storeId/customers/:customerId',                        { preHandler: pre }, handler.getCustomer);
+  app.post(  '/:storeId/customers/:customerId/redeem-loyalty',         { preHandler: pre }, handler.redeemLoyaltyPoints);
   app.patch( '/:storeId/customers/:customerId',              { preHandler: pre }, handler.updateCustomer);
   app.get(   '/:storeId/customers/:customerId/ledger',       { preHandler: pre }, handler.getCreditLedger);
   app.post(  '/:storeId/customers/:customerId/payment',      { preHandler: pre }, handler.recordCreditPayment);

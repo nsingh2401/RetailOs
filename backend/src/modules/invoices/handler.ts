@@ -254,6 +254,22 @@ export async function confirmInvoice(
           data:  { totalPurchases: { increment: invoice.grandTotalBase } },
         });
       }
+
+      // 7. Award loyalty points for non-credit sales
+      if (invoice.customerId && !isCredit) {
+        const loyaltyRule = await tx.discountRule.findFirst({
+          where: { storeId, type: 'LOYALTY', isActive: true, pointsPerHundred: { not: null } },
+        });
+        if (loyaltyRule?.pointsPerHundred) {
+          const pts = Math.floor(Number(invoice.grandTotalBase) / 100) * loyaltyRule.pointsPerHundred;
+          if (pts > 0) {
+            await tx.customer.update({
+              where: { customerId: invoice.customerId },
+              data:  { loyaltyPoints: { increment: pts } },
+            });
+          }
+        }
+      }
     });
   } catch (err: any) {
     if (err.code === 'NOT_FOUND') {

@@ -12,16 +12,19 @@ function isManager(role: string) {
 // ── Schemas ────────────────────────────────────────────────────
 
 const DiscountRuleSchema = z.object({
-  type:               z.enum(['PRODUCT', 'CATEGORY', 'LOYALTY', 'FESTIVE']),
-  name:               z.string().min(1).max(200),
-  discountType:       z.enum(['PERCENTAGE', 'FIXED']),
-  discountValue:      z.number().positive(),
-  minPurchaseAmount:  z.number().nonnegative().optional(),
-  productId:          z.string().uuid().optional(),
-  categoryId:         z.string().uuid().optional(),
-  startDate:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  endDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  isActive:           z.boolean().optional(),
+  type:                  z.enum(['PRODUCT', 'CATEGORY', 'LOYALTY', 'FESTIVE']),
+  name:                  z.string().min(1).max(200),
+  discountType:          z.enum(['PERCENTAGE', 'FIXED']),
+  discountValue:         z.number().positive(),
+  minPurchaseAmount:     z.number().nonnegative().optional(),
+  productId:             z.string().uuid().optional(),
+  categoryId:            z.string().uuid().optional(),
+  startDate:             z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate:               z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  isActive:              z.boolean().optional(),
+  pointsPerHundred:      z.number().int().positive().optional(),
+  minPointsToRedeem:     z.number().int().nonnegative().optional(),
+  pointsRedemptionValue: z.number().nonnegative().optional(),
 });
 
 const UpdateDiscountRuleSchema = DiscountRuleSchema.partial();
@@ -75,16 +78,19 @@ export async function createDiscount(
   const rule = await prisma.discountRule.create({
     data: {
       storeId,
-      type:               body.type,
-      name:               body.name,
-      discountType:       body.discountType,
-      discountValue:      body.discountValue,
-      minPurchaseAmount:  body.minPurchaseAmount ?? null,
-      productId:          body.productId  ?? null,
-      categoryId:         body.categoryId ?? null,
-      startDate:          body.startDate  ? new Date(body.startDate)  : null,
-      endDate:            body.endDate    ? new Date(body.endDate)    : null,
-      isActive:           body.isActive   ?? true,
+      type:                  body.type,
+      name:                  body.name,
+      discountType:          body.discountType,
+      discountValue:         body.discountValue,
+      minPurchaseAmount:     body.minPurchaseAmount ?? null,
+      productId:             body.productId  ?? null,
+      categoryId:            body.categoryId ?? null,
+      startDate:             body.startDate  ? new Date(body.startDate)  : null,
+      endDate:               body.endDate    ? new Date(body.endDate)    : null,
+      isActive:              body.isActive   ?? true,
+      pointsPerHundred:      body.pointsPerHundred      ?? null,
+      minPointsToRedeem:     body.minPointsToRedeem     ?? null,
+      pointsRedemptionValue: body.pointsRedemptionValue ?? null,
     },
     include: {
       product:  { select: { productId: true, name: true } },
@@ -138,7 +144,10 @@ export async function updateDiscount(
       ...(body.categoryId         !== undefined && { categoryId:        body.categoryId }),
       ...(body.startDate          !== undefined && { startDate:         body.startDate ? new Date(body.startDate) : null }),
       ...(body.endDate            !== undefined && { endDate:           body.endDate   ? new Date(body.endDate)   : null }),
-      ...(body.isActive           !== undefined && { isActive:          body.isActive }),
+      ...(body.isActive               !== undefined && { isActive:              body.isActive }),
+      ...(body.pointsPerHundred      !== undefined && { pointsPerHundred:      body.pointsPerHundred }),
+      ...(body.minPointsToRedeem     !== undefined && { minPointsToRedeem:     body.minPointsToRedeem }),
+      ...(body.pointsRedemptionValue !== undefined && { pointsRedemptionValue: body.pointsRedemptionValue }),
     },
     include: {
       product:  { select: { productId: true, name: true } },
@@ -228,4 +237,38 @@ export async function searchProductsForDiscount(
       internalSku: p.internal_sku,
     })),
   });
+}
+
+// ── GET /:storeId/discounts/active ────────────────────────────
+export async function listActiveDiscounts(
+  request: FastifyRequest<{ Params: { storeId: string } }>,
+  reply: FastifyReply,
+) {
+  const storeId = request.storeId;
+  const today   = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const rules = await prisma.discountRule.findMany({
+    where: {
+      storeId,
+      isActive: true,
+      OR: [
+        { type: { in: ['PRODUCT', 'CATEGORY', 'LOYALTY'] } },
+        {
+          type: 'FESTIVE',
+          AND: [
+            { OR: [{ startDate: null }, { startDate: { lte: today } }] },
+            { OR: [{ endDate:   null }, { endDate:   { gte: today } }] },
+          ],
+        },
+      ],
+    },
+    include: {
+      product:  { select: { productId: true, name: true } },
+      category: { select: { categoryId: true, name: true } },
+    },
+    orderBy: { type: 'asc' },
+  });
+
+  return reply.send({ success: true, data: rules });
 }
