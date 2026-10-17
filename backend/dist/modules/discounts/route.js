@@ -41,6 +41,7 @@ const handler = __importStar(require("./handler"));
 const pre = [rateLimit_1.rateLimitMiddleware, auth_1.authMiddleware, store_1.storeMiddleware];
 async function discountRoutes(app) {
     // specific routes before parameterized
+    app.get('/:storeId/discounts/active', { preHandler: pre }, handler.listActiveDiscounts);
     app.get('/:storeId/discounts/products/search', { preHandler: pre }, handler.searchProductsForDiscount);
     app.get('/:storeId/discounts', { preHandler: pre }, handler.listDiscounts);
     app.post('/:storeId/discounts', { preHandler: pre }, handler.createDiscount);

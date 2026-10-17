@@ -5,6 +5,7 @@ exports.createDiscount = createDiscount;
 exports.updateDiscount = updateDiscount;
 exports.deleteDiscount = deleteDiscount;
 exports.searchProductsForDiscount = searchProductsForDiscount;
+exports.listActiveDiscounts = listActiveDiscounts;
 const zod_1 = require("zod");
 const prisma_1 = require("../../lib/prisma");
 const typesense_1 = require("../../lib/typesense");
@@ -24,6 +25,9 @@ const DiscountRuleSchema = zod_1.z.object({
     startDate: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     endDate: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     isActive: zod_1.z.boolean().optional(),
+    pointsPerHundred: zod_1.z.number().int().positive().optional(),
+    minPointsToRedeem: zod_1.z.number().int().nonnegative().optional(),
+    pointsRedemptionValue: zod_1.z.number().nonnegative().optional(),
 });
 const UpdateDiscountRuleSchema = DiscountRuleSchema.partial();
 // ── GET /:storeId/discounts ────────────────────────────────────
@@ -73,6 +77,9 @@ async function createDiscount(request, reply) {
             startDate: body.startDate ? new Date(body.startDate) : null,
             endDate: body.endDate ? new Date(body.endDate) : null,
             isActive: body.isActive ?? true,
+            pointsPerHundred: body.pointsPerHundred ?? null,
+            minPointsToRedeem: body.minPointsToRedeem ?? null,
+            pointsRedemptionValue: body.pointsRedemptionValue ?? null,
         },
         include: {
             product: { select: { productId: true, name: true } },
@@ -118,6 +125,9 @@ async function updateDiscount(request, reply) {
             ...(body.startDate !== undefined && { startDate: body.startDate ? new Date(body.startDate) : null }),
             ...(body.endDate !== undefined && { endDate: body.endDate ? new Date(body.endDate) : null }),
             ...(body.isActive !== undefined && { isActive: body.isActive }),
+            ...(body.pointsPerHundred !== undefined && { pointsPerHundred: body.pointsPerHundred }),
+            ...(body.minPointsToRedeem !== undefined && { minPointsToRedeem: body.minPointsToRedeem }),
+            ...(body.pointsRedemptionValue !== undefined && { pointsRedemptionValue: body.pointsRedemptionValue }),
         },
         include: {
             product: { select: { productId: true, name: true } },
@@ -191,5 +201,33 @@ async function searchProductsForDiscount(request, reply) {
             internalSku: p.internal_sku,
         })),
     });
+}
+// ── GET /:storeId/discounts/active ────────────────────────────
+async function listActiveDiscounts(request, reply) {
+    const storeId = request.storeId;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rules = await prisma_1.prisma.discountRule.findMany({
+        where: {
+            storeId,
+            isActive: true,
+            OR: [
+                { type: { in: ['PRODUCT', 'CATEGORY', 'LOYALTY'] } },
+                {
+                    type: 'FESTIVE',
+                    AND: [
+                        { OR: [{ startDate: null }, { startDate: { lte: today } }] },
+                        { OR: [{ endDate: null }, { endDate: { gte: today } }] },
+                    ],
+                },
+            ],
+        },
+        include: {
+            product: { select: { productId: true, name: true } },
+            category: { select: { categoryId: true, name: true } },
+        },
+        orderBy: { type: 'asc' },
+    });
+    return reply.send({ success: true, data: rules });
 }
 //# sourceMappingURL=handler.js.map

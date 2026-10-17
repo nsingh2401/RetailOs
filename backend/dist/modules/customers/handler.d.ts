@@ -58,4 +58,11 @@ export declare function verifyGstin(request: FastifyRequest<{
         gstin?: string;
     };
 }>, reply: FastifyReply): Promise<never>;
+export declare function redeemLoyaltyPoints(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        customerId: string;
+    };
+    Body: unknown;
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map

@@ -9,6 +9,7 @@ exports.updateCustomer = updateCustomer;
 exports.getCreditLedger = getCreditLedger;
 exports.recordCreditPayment = recordCreditPayment;
 exports.verifyGstin = verifyGstin;
+exports.redeemLoyaltyPoints = redeemLoyaltyPoints;
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../../lib/prisma");
 const typesense_1 = require("../../lib/typesense");
@@ -399,5 +400,45 @@ async function verifyGstin(request, reply) {
         }
         throw err;
     }
+}
+// ── POST /v1/stores/:storeId/customers/:customerId/redeem-loyalty ─
+async function redeemLoyaltyPoints(request, reply) {
+    const storeId = request.storeId;
+    const { customerId } = request.params;
+    const body = request.body;
+    const points = Number(body?.points ?? 0);
+    if (!Number.isInteger(points) || points <= 0) {
+        return reply.status(400).send({
+            success: false,
+            error: { code: 'INVALID_POINTS', message: 'points must be a positive integer', statusCode: 400 },
+        });
+    }
+    const customer = await prisma_1.prisma.customer.findFirst({
+        where: { customerId, storeId, isActive: true },
+    });
+    if (!customer) {
+        return reply.status(404).send({
+            success: false,
+            error: { code: 'NOT_FOUND', message: 'Customer not found', statusCode: 404 },
+        });
+    }
+    if (customer.loyaltyPoints < points) {
+        return reply.status(400).send({
+            success: false,
+            error: {
+                code: 'INSUFFICIENT_POINTS',
+                message: `Only ${customer.loyaltyPoints} points available`,
+                statusCode: 400,
+            },
+        });
+    }
+    const updated = await prisma_1.prisma.customer.update({
+        where: { customerId },
+        data: { loyaltyPoints: { decrement: points } },
+    });
+    return reply.send({
+        success: true,
+        data: { loyaltyPoints: updated.loyaltyPoints, redeemed: points },
+    });
 }
 //# sourceMappingURL=handler.js.map

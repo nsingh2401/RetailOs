@@ -30,4 +30,9 @@ export declare function searchProductsForDiscount(request: FastifyRequest<{
     };
     Querystring: Record<string, unknown>;
 }>, reply: FastifyReply): Promise<never>;
+export declare function listActiveDiscounts(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map
