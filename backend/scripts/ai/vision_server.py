@@ -93,11 +93,17 @@ ITEMS TABLE:
 - hsn_code = numeric code from column labeled 'HSN/SAC', 'HSN', 'SAC' (e.g. 30049099, 1006)
 - quantity = NUMBER only, strip units (KG/PCS/Bags/Nos etc.)
 - unit = the unit label stripped from quantity (KG/PCS/NOS/BOX etc.), or "" if not present
-- rate = unit price BEFORE tax (taxable value per unit) — PRESERVE DECIMALS EXACTLY
+- rate = TAXABLE VALUE / BASE PRICE per unit BEFORE tax — PRESERVE DECIMALS EXACTLY
   '8305.08' stays '8305.08' — do NOT strip decimal point or remove digits
-  Rate is in the 'Rate' or 'Price' column, NOT the 'Amount' column
+  Look for column labeled 'Rate', 'Price', 'Basic Rate' — use the value EXCLUDING GST
+  If bill has BOTH 'Rate (Incl. of Tax)' AND a plain 'Rate' column, use the plain 'Rate' (without tax)
+  Do NOT use the 'Amount' column value as rate
 - discount = discount amount if shown, null otherwise
-- gst_rate = GST percentage (e.g. 18, 12, 5), null if not shown
+- gst_rate = GST percentage as a single number (e.g. 18, 12, 5), null if not shown
+  Look for columns: GST%, Tax Rate, IGST%, CGST%+SGST%
+  If bill shows CGST% and SGST% separately, add them: CGST=9% + SGST=9% → gst_rate=18
+  If bill shows IGST%, use that directly: IGST=18% → gst_rate=18
+  Extract the NUMBER only, not the % symbol
 - amount = line total for that item (quantity × rate, before or after tax per bill format)
 - batch_number = from Batch/Lot column, null if not present
 - expiry_date = from Exp/Expiry column, convert to YYYY-MM-DD, null if not present
