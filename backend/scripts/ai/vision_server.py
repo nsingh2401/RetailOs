@@ -118,6 +118,23 @@ ITEMS TABLE:
 - batch_number = from Batch/Lot column, null if not present
 - expiry_date = from Exp/Expiry column, convert to YYYY-MM-DD, null if not present
 
+PHARMACY BILL SPECIFIC RULES (apply when bill has PACK/BATCH/EXP/MRP/DIS% columns):
+- PACK column (e.g. '1*10', '2*15'): this is pack size, NOT quantity — ignore for quantity
+- quantity = value from QTY column only
+- batch_number = value from BATCH column
+- EXP column: expiry in M/YY format → convert to YYYY-MM-DD (last day not needed, use 01):
+    7/28  → 2028-07-01
+    12/26 → 2026-12-01
+    3/27  → 2027-03-01
+- MRP column: Maximum Retail Price — NOT the taxable rate
+- DIS% column: discount percentage → discount = MRP × DIS% / 100
+- rate = MRP - (MRP × DIS% / 100)   [taxable value per unit after discount]
+- amount = rate × quantity
+- SGST + CGST: add both percentages for gst_rate (SGST=2.5 + CGST=2.5 → gst_rate=5, NOT 13)
+- HSN codes for medicines are 8 digits max (30049029, 30041070). If OCR gives more digits, take last 8.
+- Decimals: '470.50' must stay '470.50' — never drop or shift decimal point
+- GSTIN is exactly 15 alphanumeric chars. If extracted value is shorter or garbled, return it as-is with a note in vendor_gstin
+
 TOTALS:
 - subtotal = taxable amount before GST (sum of all line amounts before tax)
 - gst_total = total GST/tax amount
