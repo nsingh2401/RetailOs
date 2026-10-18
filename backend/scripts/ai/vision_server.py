@@ -101,8 +101,12 @@ ITEMS TABLE:
 - unit = the unit label stripped from quantity (KG/PCS/NOS/BOX etc.), or "" if not present
 - rate = TAXABLE VALUE / BASE PRICE per unit BEFORE tax — PRESERVE DECIMALS EXACTLY
   '8305.08' stays '8305.08' — do NOT strip decimal point or remove digits
-  Look for column labeled 'Rate', 'Price', 'Basic Rate' — use the value EXCLUDING GST
-  If bill has BOTH 'Rate (Incl. of Tax)' AND a plain 'Rate' column, use the plain 'Rate' (without tax)
+  PRIORITY ORDER for rate column (use the FIRST match found):
+    1. Column labeled 'Taxable Value', 'Taxable Amt', 'Basic Amt' → divide by quantity to get per-unit rate
+    2. Column labeled 'Rate', 'Basic Rate', 'Price' (without tax qualifier)
+    3. Column labeled 'Rate (Excl. Tax)', 'Rate (Ex. GST)'
+  NEVER use 'Rate (Incl. of Tax)', 'Rate (Incl. GST)', 'MRP' or any tax-inclusive column
+  Example: bill shows Rate(Incl. of Tax)=9799.99 AND Taxable Value=8305.08 → rate=8305.08
   Do NOT use the 'Amount' column value as rate
 - discount = discount amount if shown, null otherwise
 - gst_rate = GST percentage as a single number (e.g. 18, 12, 5), null if not shown
