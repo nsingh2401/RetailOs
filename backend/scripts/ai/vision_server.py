@@ -385,13 +385,7 @@ async def extract_bill_ocr(
     # ── 3. Tesseract OCR ─────────────────────────────────────────
     try:
         ocr_text = pytesseract.image_to_string(
-            processed, lang="eng",
-            config=(
-                "--psm 6 --oem 3 "
-                "-c tessedit_char_whitelist="
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-                "0123456789/-.,:()@%₹ "
-            ),
+            processed, lang="eng", config="--psm 6 --oem 3"
         )
     except Exception as e:
         raise HTTPException(500, detail=f"OCR failed: {e}")
