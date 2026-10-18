@@ -61,26 +61,58 @@ PRODUCT_PROMPT = (
 )
 
 BILL_OCR_PROMPT = """\
-You are a bill/invoice parser. The OCR text below is from an Indian vendor bill.
+You are a bill/invoice parser. The OCR text below is from an Indian vendor/supplier bill.
 
-IMPORTANT RULES:
-1. Find the items TABLE in the bill — it has column headers like: Item/Description, HSN/SAC, Batch, Expiry/Exp Date, Qty/Quantity, Rate/Price, Tax%, Amount
-2. Extract ONLY the data rows from the table — NOT the vendor header, company name, address, or footer text
-3. Map columns correctly: Items/Description column -> name, HSN column -> hsn_code, Batch column -> batch_number, Exp Date column -> expiry_date, Qty/Quantity column -> quantity, Rate column -> rate, Tax% column -> gst_rate, Amount column -> amount
-4. vendor_name = the company selling TO you (BILL FROM section, NOT your company name at top)
-5. quantity must be a NUMBER only — extract digits, remove units like KG/PCS/Bags
-6. rate must be a NUMBER only — the price per unit
-7. amount must be a NUMBER only — total for that line item
-8. expiry_date format: YYYY-MM-DD (convert 31 Jan 2027 -> 2027-01-31, 30 Sept 2026 -> 2026-09-30)
+EXTRACTION RULES:
+
+VENDOR (SELLER):
+- vendor_name = the company at the TOP of the bill that is SELLING to you
+  Look for: the first company name, text before "Invoice No", text after "From:", letterhead company
+  Do NOT use the buyer/consignee/ship-to company name
+- vendor_gstin = GSTIN/UIN of the SELLER/VENDOR (top section), labeled 'GSTIN/UIN', 'GSTIN', 'GST No'
+  Do NOT use the buyer's GSTIN
+
+BILL NUMBER AND DATE:
+- bill_number = invoice/bill reference number, labeled 'Invoice No.', 'Invoice No', 'Bill No', 'Invoice #'
+  Example formats: 'PS26-27/1248', 'INV-001', 'TAX/2024/001'
+- bill_date = the date NEXT TO the invoice number, labeled 'Date', 'Dated', 'Invoice Date'
+  Convert ALL date formats to YYYY-MM-DD:
+    '28-Sep-26'  -> '2026-09-28'
+    '28/09/26'   -> '2026-09-28'
+    '28/09/2026' -> '2026-09-28'
+    '28 Sep 2026'-> '2026-09-28'
+    '2-digit year: assume 20XX (e.g. 26 -> 2026, 27 -> 2027)'
+
+ITEMS TABLE:
+- Find the table with columns: Description/Item, HSN/SAC, Qty, Rate, Amount (and optionally Batch, Expiry, Tax%)
+- Extract ONLY data rows — not headers, not totals, not blank rows
+- name = product description from Description/Item column
+- hsn_code = numeric code from column labeled 'HSN/SAC', 'HSN', 'SAC' (e.g. 30049099, 1006)
+- quantity = NUMBER only, strip units (KG/PCS/Bags/Nos etc.)
+- unit = the unit label stripped from quantity (KG/PCS/NOS/BOX etc.), or "" if not present
+- rate = unit price BEFORE tax (taxable value per unit) — PRESERVE DECIMALS EXACTLY
+  '8305.08' stays '8305.08' — do NOT strip decimal point or remove digits
+  Rate is in the 'Rate' or 'Price' column, NOT the 'Amount' column
+- discount = discount amount if shown, null otherwise
+- gst_rate = GST percentage (e.g. 18, 12, 5), null if not shown
+- amount = line total for that item (quantity × rate, before or after tax per bill format)
+- batch_number = from Batch/Lot column, null if not present
+- expiry_date = from Exp/Expiry column, convert to YYYY-MM-DD, null if not present
+
+TOTALS:
+- subtotal = taxable amount before GST (sum of all line amounts before tax)
+- gst_total = total GST/tax amount
+- total_amount = final invoice amount (bottom-right grand total)
 
 Return ONLY valid JSON, no explanation:
-{{"vendor_name": "", "bill_number": "", "bill_date": "", "items": [{{"name": "", "hsn_code": null, "quantity": 0, "unit": "", "rate": 0, "discount": null, "gst_rate": null, "amount": 0, "batch_number": null, "expiry_date": null}}], "subtotal": null, "gst_total": null, "total_amount": 0}}
+{{"vendor_name": "", "vendor_gstin": null, "bill_number": "", "bill_date": "", "items": [{{"name": "", "hsn_code": null, "quantity": 0, "unit": "", "rate": 0, "discount": null, "gst_rate": null, "amount": 0, "batch_number": null, "expiry_date": null}}], "subtotal": null, "gst_total": null, "total_amount": 0}}
 
 OCR TEXT:
 {ocr_text}"""
 
 BILL_DEFAULTS: dict = {
     "vendor_name":  "",
+    "vendor_gstin": None,
     "bill_number":  "",
     "bill_date":    "",
     "items":        [],
