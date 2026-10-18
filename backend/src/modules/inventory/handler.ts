@@ -634,6 +634,8 @@ export async function scanVendorBill(
     success: true,
     data: {
       vendorName:  String(billData['vendor_name']  ?? ''),
+      vendorGstin: billData['vendor_gstin'] != null
+                     ? String(billData['vendor_gstin']) : null,
       billDate:    String(billData['bill_date']     ?? ''),
       billNumber:  String(billData['bill_number']   ?? ''),
       totalAmount: Number(billData['total_amount']  ?? 0),
@@ -679,6 +681,7 @@ export async function createPurchase(
         data: {
           storeId,
           supplierName:   body.supplierName,
+          vendorGstin:    body.vendorGstin ?? null,
           brandId:        body.brandId,
           invoiceNumber:  body.invoiceNumber,
           purchaseDate:   new Date(body.purchaseDate),
