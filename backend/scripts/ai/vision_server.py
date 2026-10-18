@@ -18,6 +18,7 @@ Run:
 import base64
 import io
 import json
+import os
 import platform
 import re
 from contextlib import asynccontextmanager
@@ -39,9 +40,11 @@ if platform.system() == "Windows":
 
 # ── Config ─────────────────────────────────────────────────────
 
-OLLAMA_URL   = "http://localhost:11434"
-OLLAMA_MODEL = "llava"
-QWEN_MODEL   = "qwen2.5:7b"
+OLLAMA_URL    = "http://localhost:11434"
+OLLAMA_MODEL  = "llava"
+QWEN_MODEL    = "qwen2.5:7b"
+QWEN_VL_MODEL = "qwen2.5vl:7b"
+VISION_MODEL  = os.getenv("VISION_MODEL", "tesseract")  # 'tesseract' | 'qwen2.5-vl'
 
 PRODUCT_PROMPT = (
     "You are a product identification AI for an Indian retail POS system. "
@@ -265,11 +268,12 @@ async def health():
             models = [m["name"] for m in r.json().get("models", [])]
             llava_ready = any(OLLAMA_MODEL in m for m in models)
             return {
-                "status":      "ready" if llava_ready else "model_not_pulled",
-                "ollama":      "running",
-                "model":       OLLAMA_MODEL,
-                "llava_ready": llava_ready,
-                "models":      models,
+                "status":       "ready" if llava_ready else "model_not_pulled",
+                "ollama":       "running",
+                "model":        OLLAMA_MODEL,
+                "vision_model": VISION_MODEL,
+                "llava_ready":  llava_ready,
+                "models":       models,
             }
     except httpx.ConnectError:
         return JSONResponse(status_code=503, content={
@@ -338,14 +342,59 @@ async def analyze(
     return result
 
 
+async def extract_bill_qwen_vl(image_b64: str) -> dict:
+    """Send bill image directly to Qwen2.5-VL for structured extraction (no Tesseract)."""
+    # Strip the {ocr_text} section — vision model sees the image directly
+    vision_prompt = re.sub(
+        r"\n\nOCR TEXT:\n\{ocr_text\}$", "", BILL_OCR_PROMPT
+    ) + "\n\nAnalyze the bill image above and extract all data per the rules above."
+
+    payload = {
+        "model":  QWEN_VL_MODEL,
+        "prompt": vision_prompt,
+        "images": [image_b64],
+        "stream": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            r = await client.post(f"{OLLAMA_URL}/api/generate", json=payload)
+            r.raise_for_status()
+            raw_text = r.json().get("response", "")
+    except httpx.ConnectError:
+        raise HTTPException(503, detail=(
+            f"Cannot connect to Ollama at {OLLAMA_URL}. Is Ollama running?"
+        ))
+    except httpx.TimeoutException:
+        raise HTTPException(504, detail="Qwen2.5-VL inference timed out (>300s)")
+    except Exception as e:
+        raise HTTPException(502, detail=f"Ollama error: {e}")
+
+    raw = raw_text.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```$",          "", raw, flags=re.MULTILINE)
+    raw = raw.strip()
+
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        raise ValueError(f"No JSON in Qwen2.5-VL response: {raw[:200]}")
+
+    parsed = json.loads(match.group())
+    for k, v in BILL_DEFAULTS.items():
+        parsed.setdefault(k, v)
+    if not isinstance(parsed.get("items"), list):
+        parsed["items"] = []
+    return parsed
+
+
 @app.post("/extract-bill-ocr")
 async def extract_bill_ocr(
     file:         Optional[UploadFile] = File(None),
     base64_image: Optional[str]        = Form(None),
 ):
     """
-    Extract line items from a vendor/supplier bill using Tesseract OCR + Qwen 2.5 7B.
-    Pipeline: image → preprocess → Tesseract OCR → Qwen text parsing → JSON.
+    Extract line items from a vendor/supplier bill.
+    Pipeline (VISION_MODEL=tesseract): image → preprocess → Tesseract → Qwen text → JSON.
+    Pipeline (VISION_MODEL=qwen2.5-vl): image → Qwen2.5-VL vision → JSON (no Tesseract).
     Accepts either:
       - multipart file upload (field name: 'file')
       - base64-encoded image string (field name: 'base64_image')
@@ -353,7 +402,26 @@ async def extract_bill_ocr(
     # ── 1. Load image bytes ──────────────────────────────────────
     data = await load_image(file, base64_image)
 
-    # ── 2. Decode + preprocess for OCR ──────────────────────────
+    # ── 2a. Qwen2.5-VL path — skip Tesseract entirely ───────────
+    if VISION_MODEL == "qwen2.5-vl":
+        print(f"[extract-bill-ocr] Using Qwen2.5-VL vision model ({QWEN_VL_MODEL})")
+        try:
+            b64 = image_to_base64(data)
+        except Exception as e:
+            raise HTTPException(400, detail=f"Cannot decode image: {e}")
+        try:
+            parsed = await extract_bill_qwen_vl(b64)
+        except HTTPException:
+            raise
+        except (json.JSONDecodeError, ValueError) as e:
+            return JSONResponse(status_code=200, content={
+                "success": False,
+                **BILL_DEFAULTS,
+                "_parse_error": str(e),
+            })
+        return {"success": True, "data": parsed, "raw_ocr": None}
+
+    # ── 2b. Tesseract path — preprocess + OCR ───────────────────
     try:
         pil_img = Image.open(io.BytesIO(data)).convert("RGB")
         # Scale up small images — Tesseract accuracy improves at higher DPI
