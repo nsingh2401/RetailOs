@@ -92,7 +92,10 @@ BILL NUMBER AND DATE:
 ITEMS TABLE:
 - Find the table with columns: Description/Item, HSN/SAC, Qty, Rate, Amount (and optionally Batch, Expiry, Tax%)
 - Extract ONLY data rows — not headers, not totals, not blank rows
-- name = product description from Description/Item column
+- name = FULL product description from Description/Item column
+  If the product name wraps across multiple lines, JOIN all lines into one string
+  Example: line1="CP PLUS" line2="16CH 5MP-N DVR 1601F1-HC" → name="CP PLUS 16CH 5MP-N DVR 1601F1-HC"
+  Do NOT drop any leading words — brand prefix (e.g. "CP PLUS", "HIKVISION") is part of the name
 - hsn_code = numeric code from column labeled 'HSN/SAC', 'HSN', 'SAC' (e.g. 30049099, 1006)
 - quantity = NUMBER only, strip units (KG/PCS/Bags/Nos etc.)
 - unit = the unit label stripped from quantity (KG/PCS/NOS/BOX etc.), or "" if not present
