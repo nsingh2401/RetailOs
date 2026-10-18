@@ -76,12 +76,15 @@ BILL NUMBER AND DATE:
 - bill_number = invoice/bill reference number, labeled 'Invoice No.', 'Invoice No', 'Bill No', 'Invoice #'
   Example formats: 'PS26-27/1248', 'INV-001', 'TAX/2024/001'
 - bill_date = the date NEXT TO the invoice number, labeled 'Date', 'Dated', 'Invoice Date'
-  Convert ALL date formats to YYYY-MM-DD:
-    '28-Sep-26'  -> '2026-09-28'
-    '28/09/26'   -> '2026-09-28'
-    '28/09/2026' -> '2026-09-28'
-    '28 Sep 2026'-> '2026-09-28'
-    '2-digit year: assume 20XX (e.g. 26 -> 2026, 27 -> 2027)'
+  Convert ALL date formats to YYYY-MM-DD. NEVER return the date in its original format.
+  Examples:
+    '28-Sep-26'       -> '2026-09-28'
+    '28/09/26'        -> '2026-09-28'
+    '28/09/2026'      -> '2026-09-28'
+    '28 Sep 2026'     -> '2026-09-28'
+    'September 28 2026' -> '2026-09-28'
+    '28-09-2026'      -> '2026-09-28'
+    '2-digit year: always assume 20XX (26 -> 2026, 27 -> 2027, 28 -> 2028)'
 
 ITEMS TABLE:
 - Find the table with columns: Description/Item, HSN/SAC, Qty, Rate, Amount (and optionally Batch, Expiry, Tax%)
@@ -207,16 +210,32 @@ def image_to_base64(data: bytes) -> str:
 
 
 def preprocess_for_ocr(img: Image.Image) -> np.ndarray:
-    """Convert PIL image → grayscale → adaptive threshold → denoise."""
-    arr    = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    gray   = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+    """Convert PIL image → 2x upscale → CLAHE → denoise → morph → adaptive threshold."""
+    arr  = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+
+    # 1. Upscale 2x — improves Tesseract accuracy on low-DPI scans
+    h, w   = gray.shape
+    gray   = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
+
+    # 2. CLAHE — adaptive contrast enhancement per tile
+    clahe  = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    gray   = clahe.apply(gray)
+
+    # 3. Denoise before thresholding
+    gray   = cv2.fastNlMeansDenoising(gray, h=10)
+
+    # 4. Morphological close — fills small gaps in characters
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    gray   = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+
+    # 5. Adaptive threshold — binarise for Tesseract
     thresh = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY, 31, 11,
     )
-    denoised = cv2.fastNlMeansDenoising(thresh, h=10)
-    return denoised
+    return thresh
 
 
 def parse_llava_response(raw: str) -> dict:
@@ -360,7 +379,13 @@ async def extract_bill_ocr(
     # ── 3. Tesseract OCR ─────────────────────────────────────────
     try:
         ocr_text = pytesseract.image_to_string(
-            processed, lang="eng", config="--psm 6"
+            processed, lang="eng",
+            config=(
+                "--psm 6 --oem 3 "
+                "-c tessedit_char_whitelist="
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                "0123456789/-.,:()@%₹ "
+            ),
         )
     except Exception as e:
         raise HTTPException(500, detail=f"OCR failed: {e}")
