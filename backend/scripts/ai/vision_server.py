@@ -216,31 +216,16 @@ def image_to_base64(data: bytes) -> str:
 
 
 def preprocess_for_ocr(img: Image.Image) -> np.ndarray:
-    """Convert PIL image → 2x upscale → CLAHE → denoise → morph → adaptive threshold."""
+    """Simple preprocessing for printed bills — upscale + grayscale + Otsu threshold."""
     arr  = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
 
-    # 1. Upscale 2x — improves Tesseract accuracy on low-DPI scans
-    h, w   = gray.shape
-    gray   = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
+    # Upscale 2x for better character recognition
+    h, w = gray.shape
+    gray = cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
 
-    # 2. CLAHE — adaptive contrast enhancement per tile
-    clahe  = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    gray   = clahe.apply(gray)
-
-    # 3. Denoise before thresholding
-    gray   = cv2.fastNlMeansDenoising(gray, h=10)
-
-    # 4. Morphological close — fills small gaps in characters
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    gray   = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
-
-    # 5. Adaptive threshold — binarise for Tesseract
-    thresh = cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 31, 11,
-    )
+    # Simple Otsu threshold — best for clean printed bills
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return thresh
 
 
