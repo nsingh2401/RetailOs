@@ -275,6 +275,7 @@ model Store {
   tallyVersion           String?  @db.VarChar(20)  @map("tally_version")
   invoiceStartNumber     Int?                     @map("invoice_start_number")
   invoiceFinancialYear   String?  @db.VarChar(10) @map("invoice_financial_year")
+  discountCombinationRule String       @default("ALL") @db.VarChar(10) @map("discount_combination_rule")
   settings          Json         @default("{}") @db.JsonB
   isActive          Boolean      @default(true) @map("is_active")
   createdAt         DateTime     @default(now()) @db.Timestamptz() @map("created_at")

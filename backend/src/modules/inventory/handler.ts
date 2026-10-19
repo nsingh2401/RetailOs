@@ -705,23 +705,37 @@ export async function createPurchase(
         const quantityBefore = currentInv ? Number(currentInv.quantity) : 0;
         const quantityAfter  = quantityBefore + item.quantity;
 
-        // Create batch if batchNumber provided
+        // Create batch if batchNumber provided; dedup by expiry_date
         let batchId: string | undefined;
         if (item.batchNumber) {
-          const batch = await tx.batch.create({
-            data: {
-              variantId:         item.variantId,
-              storeId,
-              batchNumber:       item.batchNumber,
-              quantity:          item.quantity,
-              remainingQty:      item.quantity,
-              purchasePrice:     item.unitCost,
-              manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : undefined,
-              expiryDate:        item.expiryDate        ? new Date(item.expiryDate)        : undefined,
-              isExpired:         item.expiryDate ? new Date(item.expiryDate) < today : false,
-            },
-          });
-          batchId = batch.batchId;
+          const expiryDate = item.expiryDate ? new Date(item.expiryDate) : undefined;
+          const existingBatch = expiryDate
+            ? await tx.batch.findFirst({
+                where: { variantId: item.variantId, storeId, expiryDate, isExpired: false },
+              })
+            : null;
+          if (existingBatch) {
+            const updated = await tx.batch.update({
+              where: { batchId: existingBatch.batchId },
+              data:  { quantity: { increment: item.quantity }, remainingQty: { increment: item.quantity } },
+            });
+            batchId = updated.batchId;
+          } else {
+            const batch = await tx.batch.create({
+              data: {
+                variantId:         item.variantId,
+                storeId,
+                batchNumber:       item.batchNumber,
+                quantity:          item.quantity,
+                remainingQty:      item.quantity,
+                purchasePrice:     item.unitCost,
+                manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : undefined,
+                expiryDate,
+                isExpired:         expiryDate ? expiryDate < today : false,
+              },
+            });
+            batchId = batch.batchId;
+          }
         }
 
         // Create purchase entry item

@@ -24,11 +24,12 @@ export async function getStore(
       gstin:              true,
       currencyCode:       true,
       timezone:           true,
-      lowStockThreshold:  true,
-      slowMoverThreshold: true,
-      tallyVersion:       true,
-      address:            true,
-      isActive:           true,
+      lowStockThreshold:          true,
+      slowMoverThreshold:         true,
+      tallyVersion:               true,
+      discountCombinationRule:    true,
+      address:                    true,
+      isActive:                   true,
       updatedAt:          true,
     },
   });
@@ -60,9 +61,10 @@ export async function updateStore(
       industryType?:       string;
       currencyCode?:       string;
       timezone?:           string;
-      lowStockThreshold?:  number;
-      slowMoverThreshold?: number;
-      tallyVersion?:       string | null;
+      lowStockThreshold?:          number;
+      slowMoverThreshold?:         number;
+      tallyVersion?:               string | null;
+      discountCombinationRule?:    string;
     };
   }>,
   reply: FastifyReply,
@@ -77,6 +79,7 @@ export async function updateStore(
     lowStockThreshold,
     slowMoverThreshold,
     tallyVersion,
+    discountCombinationRule,
   } = request.body ?? {};
 
   // Build update object — only defined fields
@@ -97,6 +100,9 @@ export async function updateStore(
     data.slowMoverThreshold = Math.min(100, Math.max(1, slowMoverThreshold));
   if (tallyVersion !== undefined)
     data.tallyVersion = tallyVersion || null;
+  if (discountCombinationRule !== undefined &&
+      ['ALL', 'SINGLE'].includes(discountCombinationRule))
+    data.discountCombinationRule = discountCombinationRule;
 
   if (Object.keys(data).length === 0) {
     return reply.status(400).send({
@@ -119,10 +125,11 @@ export async function updateStore(
       gstin:              true,
       currencyCode:       true,
       timezone:           true,
-      lowStockThreshold:  true,
-      slowMoverThreshold: true,
-      tallyVersion:       true,
-      updatedAt:          true,
+      lowStockThreshold:          true,
+      slowMoverThreshold:         true,
+      tallyVersion:               true,
+      discountCombinationRule:    true,
+      updatedAt:                  true,
     },
   });
 
