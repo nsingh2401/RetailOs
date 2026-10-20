@@ -124,20 +124,22 @@ export async function createInvoice(
       localId:        body.localId,
       lineItems: {
         create: lineData.map(item => ({
-          variantId:      item.variantId,
-          batchId:        item.batchId,
-          productName:    item.productName,
-          variantAttrs:   item.variantAttrs,
-          hsnCode:        item.hsnCode,
-          quantity:       item.quantity,
-          unitPrice:      item.unitPrice,
-          discountPct:    item.discountPct,
-          discountAmount: item.discountAmount,
-          taxableAmount:  item.taxableAmount,
-          taxRuleId:      item.taxRuleId,
-          taxBreakdown:   item.taxBreakdown,
-          taxAmount:      item.taxAmount,
-          lineTotal:      item.lineTotal,
+          variantId:        item.variantId,
+          batchId:          item.batchId,
+          productName:      item.productName,
+          variantAttrs:     item.variantAttrs,
+          hsnCode:          item.hsnCode,
+          quantity:         item.quantity,
+          unitPrice:        item.unitPrice,
+          discountPct:      item.discountPct,
+          discountAmount:   item.discountAmount,
+          taxableAmount:    item.taxableAmount,
+          taxRuleId:        item.taxRuleId,
+          taxBreakdown:     item.taxBreakdown,
+          taxAmount:        item.taxAmount,
+          lineTotal:        item.lineTotal,
+          sellingUnit:      item.sellingUnit ?? null,
+          stripsEquivalent: item.stripsEquivalent ?? null,
         })),
       },
     },
@@ -174,10 +176,12 @@ export async function confirmInvoice(
         const inv = await tx.inventory.findUnique({
           where: { storeId_variantId: { storeId, variantId: item.variantId } },
         });
-        const available = Number(inv?.quantity ?? 0) - Number(inv?.reservedQty ?? 0);
-        if (available < Number(item.quantity)) {
+        const available  = Number(inv?.quantity ?? 0) - Number(inv?.reservedQty ?? 0);
+        // Loose tablet sales deduct by strip equivalent, not tablet count
+        const requested  = item.stripsEquivalent ? Number(item.stripsEquivalent) : Number(item.quantity);
+        if (available < requested) {
           throw Object.assign(
-            new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${item.quantity}`),
+            new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${requested}`),
             { code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems' },
           );
         }
@@ -189,7 +193,7 @@ export async function confirmInvoice(
           where: { storeId_variantId: { storeId, variantId: item.variantId } },
         });
         const qtyBefore = Number(inv!.quantity);
-        const qtyDelta  = -Number(item.quantity);
+        const qtyDelta  = -(item.stripsEquivalent ? Number(item.stripsEquivalent) : Number(item.quantity));
         const qtyAfter  = qtyBefore + qtyDelta;
 
         await tx.inventory.update({

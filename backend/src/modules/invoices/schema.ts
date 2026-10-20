@@ -1,14 +1,16 @@
 import { z } from 'zod';
 
 export const LineItemSchema = z.object({
-  variantId:     z.string().uuid(),
-  hsnCode:       z.string().optional(),
-  batchId:       z.string().uuid().optional(),
-  quantity:      z.number().positive(),
-  unitPrice:     z.number().nonnegative(),
-  discountPct:    z.number().min(0).max(100).default(0),
-  discountAmount: z.number().nonnegative().default(0),
-  taxRuleId:     z.string().uuid().optional(),
+  variantId:       z.string().uuid(),
+  hsnCode:         z.string().optional(),
+  batchId:         z.string().uuid().optional(),
+  quantity:        z.number().positive(),
+  unitPrice:       z.number().nonnegative(),
+  discountPct:     z.number().min(0).max(100).default(0),
+  discountAmount:  z.number().nonnegative().default(0),
+  taxRuleId:       z.string().uuid().optional(),
+  sellingUnit:     z.enum(['STRIP', 'TABLET']).optional(),
+  stripsEquivalent: z.number().positive().optional(),
 });
 
 export const CreateInvoiceSchema = z.object({

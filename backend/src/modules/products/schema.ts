@@ -48,6 +48,10 @@ export const CreateVariantSchema = z.object({
   purchasePrice:     z.number().nonnegative().optional(),
   initialStock:      z.number().nonnegative().default(0),
   expiryDate:        z.string().optional(), // YYYY-MM-DD, creates initial Batch record
+  tabletsPerUnit:    z.number().int().positive().optional(),
+  allowLooseSelling: z.boolean().default(false),
+  looseUnit:         z.enum(['TABLET', 'CAPSULE']).optional(),
+  packSize:          z.string().max(20).optional(),
 });
 
 export const UpdateVariantSchema = CreateVariantSchema.partial();

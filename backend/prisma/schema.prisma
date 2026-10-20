@@ -560,6 +560,10 @@ model ProductVariant {
   priceOverride     Decimal? @db.Decimal(15, 4) @map("price_override")
   purchasePrice     Decimal? @db.Decimal(15, 4) @map("purchase_price")
   stockQuantity     Decimal  @default(0) @db.Decimal(15, 4) @map("stock_quantity")
+  tabletsPerUnit    Int?     @map("tablets_per_unit")
+  allowLooseSelling Boolean  @default(false) @map("allow_loose_selling")
+  looseUnit         String?  @db.VarChar(10) @map("loose_unit")
+  packSize          String?  @db.VarChar(20) @map("pack_size")
   isActive          Boolean  @default(true) @map("is_active")
 
   product            Product             @relation(fields: [productId], references: [productId])
@@ -803,8 +807,10 @@ model InvoiceLineItem {
   taxableAmount  Decimal  @db.Decimal(15, 4) @map("taxable_amount")
   taxRuleId      String?  @db.Uuid @map("tax_rule_id")
   taxBreakdown   Json     @default("{}") @db.JsonB @map("tax_breakdown")
-  taxAmount      Decimal  @default(0) @db.Decimal(15, 4) @map("tax_amount")
-  lineTotal      Decimal  @db.Decimal(15, 4) @map("line_total")
+  taxAmount        Decimal  @default(0) @db.Decimal(15, 4) @map("tax_amount")
+  lineTotal        Decimal  @db.Decimal(15, 4) @map("line_total")
+  sellingUnit      String?  @db.VarChar(10) @map("selling_unit")
+  stripsEquivalent Decimal? @db.Decimal(15, 4) @map("strips_equivalent")
 
   invoice  Invoice        @relation(fields: [invoiceId], references: [invoiceId])
   variant  ProductVariant @relation(fields: [variantId], references: [variantId])
