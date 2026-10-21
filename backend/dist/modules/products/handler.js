@@ -259,7 +259,7 @@ async function searchProducts(request, reply) {
         }));
         return reply.send({
             success: true,
-            data: enriched,
+            data: enriched.filter((e) => e.variantId != null),
         });
     }
     catch {
@@ -310,6 +310,7 @@ async function searchProducts(request, reply) {
           ) b ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
+            AND pv.variant_id IS NOT NULL
             AND (
               p.name         ILIKE ${'%' + q + '%'}
               OR p.internal_sku ILIKE ${'%' + q + '%'}
@@ -348,6 +349,7 @@ async function searchProducts(request, reply) {
           ) pv ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
+            AND pv.variant_id IS NOT NULL
             AND (
               p.name         ILIKE ${'%' + q + '%'}
               OR p.internal_sku ILIKE ${'%' + q + '%'}

@@ -294,7 +294,7 @@ export async function searchProducts(
     );
     return reply.send({
       success: true,
-      data: enriched,
+      data: enriched.filter((e: any) => e.variantId != null),
     });
   } catch {
     // Fallback to PostgreSQL if Typesense unavailable
@@ -345,6 +345,7 @@ export async function searchProducts(
           ) b ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
+            AND pv.variant_id IS NOT NULL
             AND (
               p.name         ILIKE ${'%' + q + '%'}
               OR p.internal_sku ILIKE ${'%' + q + '%'}
@@ -383,6 +384,7 @@ export async function searchProducts(
           ) pv ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
+            AND pv.variant_id IS NOT NULL
             AND (
               p.name         ILIKE ${'%' + q + '%'}
               OR p.internal_sku ILIKE ${'%' + q + '%'}
