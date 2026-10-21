@@ -120,6 +120,8 @@ async function createInvoice(request, reply) {
                     taxBreakdown: item.taxBreakdown,
                     taxAmount: item.taxAmount,
                     lineTotal: item.lineTotal,
+                    sellingUnit: item.sellingUnit ?? null,
+                    stripsEquivalent: item.stripsEquivalent ?? null,
                 })),
             },
         },
@@ -152,8 +154,10 @@ async function confirmInvoice(request, reply) {
                     where: { storeId_variantId: { storeId, variantId: item.variantId } },
                 });
                 const available = Number(inv?.quantity ?? 0) - Number(inv?.reservedQty ?? 0);
-                if (available < Number(item.quantity)) {
-                    throw Object.assign(new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${item.quantity}`), { code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems' });
+                // Loose tablet sales deduct by strip equivalent, not tablet count
+                const requested = item.stripsEquivalent ? Number(item.stripsEquivalent) : Number(item.quantity);
+                if (available < requested) {
+                    throw Object.assign(new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${requested}`), { code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems' });
                 }
             }
             // 3. Deduct stock + write movement log
@@ -162,7 +166,7 @@ async function confirmInvoice(request, reply) {
                     where: { storeId_variantId: { storeId, variantId: item.variantId } },
                 });
                 const qtyBefore = Number(inv.quantity);
-                const qtyDelta = -Number(item.quantity);
+                const qtyDelta = -(item.stripsEquivalent ? Number(item.stripsEquivalent) : Number(item.quantity));
                 const qtyAfter = qtyBefore + qtyDelta;
                 await tx.inventory.update({
                     where: { storeId_variantId: { storeId, variantId: item.variantId } },

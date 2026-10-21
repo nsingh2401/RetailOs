@@ -8,6 +8,8 @@ export declare const LineItemSchema: z.ZodObject<{
     discountPct: z.ZodDefault<z.ZodNumber>;
     discountAmount: z.ZodDefault<z.ZodNumber>;
     taxRuleId: z.ZodOptional<z.ZodString>;
+    sellingUnit: z.ZodOptional<z.ZodEnum<["STRIP", "TABLET"]>>;
+    stripsEquivalent: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     variantId: string;
     quantity: number;
@@ -17,6 +19,8 @@ export declare const LineItemSchema: z.ZodObject<{
     hsnCode?: string | undefined;
     taxRuleId?: string | undefined;
     batchId?: string | undefined;
+    sellingUnit?: "TABLET" | "STRIP" | undefined;
+    stripsEquivalent?: number | undefined;
 }, {
     variantId: string;
     quantity: number;
@@ -26,6 +30,8 @@ export declare const LineItemSchema: z.ZodObject<{
     batchId?: string | undefined;
     discountPct?: number | undefined;
     discountAmount?: number | undefined;
+    sellingUnit?: "TABLET" | "STRIP" | undefined;
+    stripsEquivalent?: number | undefined;
 }>;
 export declare const CreateInvoiceSchema: z.ZodObject<{
     invoiceDate: z.ZodOptional<z.ZodString>;
@@ -44,6 +50,8 @@ export declare const CreateInvoiceSchema: z.ZodObject<{
         discountPct: z.ZodDefault<z.ZodNumber>;
         discountAmount: z.ZodDefault<z.ZodNumber>;
         taxRuleId: z.ZodOptional<z.ZodString>;
+        sellingUnit: z.ZodOptional<z.ZodEnum<["STRIP", "TABLET"]>>;
+        stripsEquivalent: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         variantId: string;
         quantity: number;
@@ -53,6 +61,8 @@ export declare const CreateInvoiceSchema: z.ZodObject<{
         hsnCode?: string | undefined;
         taxRuleId?: string | undefined;
         batchId?: string | undefined;
+        sellingUnit?: "TABLET" | "STRIP" | undefined;
+        stripsEquivalent?: number | undefined;
     }, {
         variantId: string;
         quantity: number;
@@ -62,6 +72,8 @@ export declare const CreateInvoiceSchema: z.ZodObject<{
         batchId?: string | undefined;
         discountPct?: number | undefined;
         discountAmount?: number | undefined;
+        sellingUnit?: "TABLET" | "STRIP" | undefined;
+        stripsEquivalent?: number | undefined;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     currencyCode: string;
@@ -74,6 +86,8 @@ export declare const CreateInvoiceSchema: z.ZodObject<{
         hsnCode?: string | undefined;
         taxRuleId?: string | undefined;
         batchId?: string | undefined;
+        sellingUnit?: "TABLET" | "STRIP" | undefined;
+        stripsEquivalent?: number | undefined;
     }[];
     customerId?: string | undefined;
     notes?: string | undefined;
@@ -91,6 +105,8 @@ export declare const CreateInvoiceSchema: z.ZodObject<{
         batchId?: string | undefined;
         discountPct?: number | undefined;
         discountAmount?: number | undefined;
+        sellingUnit?: "TABLET" | "STRIP" | undefined;
+        stripsEquivalent?: number | undefined;
     }[];
     currencyCode?: string | undefined;
     customerId?: string | undefined;

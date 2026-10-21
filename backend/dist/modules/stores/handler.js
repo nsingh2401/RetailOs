@@ -23,6 +23,7 @@ async function getStore(request, reply) {
             lowStockThreshold: true,
             slowMoverThreshold: true,
             tallyVersion: true,
+            discountCombinationRule: true,
             address: true,
             isActive: true,
             updatedAt: true,
@@ -46,7 +47,7 @@ async function getStore(request, reply) {
 // ── PATCH /v1/stores/:storeId ─────────────────────
 async function updateStore(request, reply) {
     const storeId = request.storeId;
-    const { name, gstin, industryType, currencyCode, timezone, lowStockThreshold, slowMoverThreshold, tallyVersion, } = request.body ?? {};
+    const { name, gstin, industryType, currencyCode, timezone, lowStockThreshold, slowMoverThreshold, tallyVersion, discountCombinationRule, } = request.body ?? {};
     // Build update object — only defined fields
     const data = {};
     if (name !== undefined)
@@ -65,6 +66,9 @@ async function updateStore(request, reply) {
         data.slowMoverThreshold = Math.min(100, Math.max(1, slowMoverThreshold));
     if (tallyVersion !== undefined)
         data.tallyVersion = tallyVersion || null;
+    if (discountCombinationRule !== undefined &&
+        ['ALL', 'SINGLE'].includes(discountCombinationRule))
+        data.discountCombinationRule = discountCombinationRule;
     if (Object.keys(data).length === 0) {
         return reply.status(400).send({
             success: false,
@@ -88,6 +92,7 @@ async function updateStore(request, reply) {
             lowStockThreshold: true,
             slowMoverThreshold: true,
             tallyVersion: true,
+            discountCombinationRule: true,
             updatedAt: true,
         },
     });

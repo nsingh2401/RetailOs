@@ -117,14 +117,22 @@ export declare const CreateVariantSchema: z.ZodObject<{
     purchasePrice: z.ZodOptional<z.ZodNumber>;
     initialStock: z.ZodDefault<z.ZodNumber>;
     expiryDate: z.ZodOptional<z.ZodString>;
+    tabletsPerUnit: z.ZodOptional<z.ZodNumber>;
+    allowLooseSelling: z.ZodDefault<z.ZodBoolean>;
+    looseUnit: z.ZodOptional<z.ZodEnum<["TABLET", "CAPSULE"]>>;
+    packSize: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     variantSku: string;
     variantAttributes: Record<string, unknown>;
     initialStock: number;
+    allowLooseSelling: boolean;
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
     priceOverride?: number | undefined;
     expiryDate?: string | undefined;
+    tabletsPerUnit?: number | undefined;
+    looseUnit?: "TABLET" | "CAPSULE" | undefined;
+    packSize?: string | undefined;
 }, {
     variantSku: string;
     barcode?: string | undefined;
@@ -133,6 +141,10 @@ export declare const CreateVariantSchema: z.ZodObject<{
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
     expiryDate?: string | undefined;
+    tabletsPerUnit?: number | undefined;
+    allowLooseSelling?: boolean | undefined;
+    looseUnit?: "TABLET" | "CAPSULE" | undefined;
+    packSize?: string | undefined;
 }>;
 export declare const UpdateVariantSchema: z.ZodObject<{
     variantSku: z.ZodOptional<z.ZodString>;
@@ -142,6 +154,10 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     purchasePrice: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
     initialStock: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     expiryDate: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    tabletsPerUnit: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
+    allowLooseSelling: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
+    looseUnit: z.ZodOptional<z.ZodOptional<z.ZodEnum<["TABLET", "CAPSULE"]>>>;
+    packSize: z.ZodOptional<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
@@ -150,6 +166,10 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
     expiryDate?: string | undefined;
+    tabletsPerUnit?: number | undefined;
+    allowLooseSelling?: boolean | undefined;
+    looseUnit?: "TABLET" | "CAPSULE" | undefined;
+    packSize?: string | undefined;
 }, {
     barcode?: string | undefined;
     purchasePrice?: number | undefined;
@@ -158,6 +178,10 @@ export declare const UpdateVariantSchema: z.ZodObject<{
     priceOverride?: number | undefined;
     initialStock?: number | undefined;
     expiryDate?: string | undefined;
+    tabletsPerUnit?: number | undefined;
+    allowLooseSelling?: boolean | undefined;
+    looseUnit?: "TABLET" | "CAPSULE" | undefined;
+    packSize?: string | undefined;
 }>;
 export declare const ProductListQuerySchema: z.ZodObject<{
     categoryId: z.ZodOptional<z.ZodString>;

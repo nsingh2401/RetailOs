@@ -44,6 +44,10 @@ exports.CreateVariantSchema = zod_1.z.object({
     purchasePrice: zod_1.z.number().nonnegative().optional(),
     initialStock: zod_1.z.number().nonnegative().default(0),
     expiryDate: zod_1.z.string().optional(), // YYYY-MM-DD, creates initial Batch record
+    tabletsPerUnit: zod_1.z.number().int().positive().optional(),
+    allowLooseSelling: zod_1.z.boolean().default(false),
+    looseUnit: zod_1.z.enum(['TABLET', 'CAPSULE']).optional(),
+    packSize: zod_1.z.string().max(20).optional(),
 });
 exports.UpdateVariantSchema = exports.CreateVariantSchema.partial();
 // ── Query schemas ──────────────────────────────────────────────

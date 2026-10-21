@@ -11,6 +11,8 @@ exports.LineItemSchema = zod_1.z.object({
     discountPct: zod_1.z.number().min(0).max(100).default(0),
     discountAmount: zod_1.z.number().nonnegative().default(0),
     taxRuleId: zod_1.z.string().uuid().optional(),
+    sellingUnit: zod_1.z.enum(['STRIP', 'TABLET']).optional(),
+    stripsEquivalent: zod_1.z.number().positive().optional(),
 });
 exports.CreateInvoiceSchema = zod_1.z.object({
     invoiceDate: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

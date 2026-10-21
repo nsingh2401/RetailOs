@@ -17,6 +17,7 @@ export declare function updateStore(request: FastifyRequest<{
         lowStockThreshold?: number;
         slowMoverThreshold?: number;
         tallyVersion?: string | null;
+        discountCombinationRule?: string;
     };
 }>, reply: FastifyReply): Promise<never>;
 export declare function changeIndustryType(request: FastifyRequest<{

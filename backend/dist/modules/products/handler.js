@@ -52,6 +52,10 @@ function buildBarcodeResult(variant, product, inventory) {
         currentStock: inventory ? Number(inventory.quantity) : 0,
         unitOfMeasure: product.unitOfMeasure,
         hsnCode: product.hsnCode,
+        tabletsPerUnit: variant.tabletsPerUnit ?? null,
+        allowLooseSelling: variant.allowLooseSelling,
+        looseUnit: variant.looseUnit ?? null,
+        packSize: variant.packSize ?? null,
     };
 }
 async function buildIndexDoc(productId) {
@@ -275,15 +279,19 @@ async function searchProducts(request, reply) {
             p.unit_of_measure AS "unitOfMeasure",
             p.pricing_type    AS "pricingType",
             tr.total_rate     AS "taxRate",
-            pv.variant_id     AS "variantId",
-            pv.variant_attributes AS "variantAttributes",
-            b.expiry_date     AS "expiryDate",
-            b.batch_number    AS "batchNumber"
+            pv.variant_id          AS "variantId",
+            pv.variant_attributes  AS "variantAttributes",
+            pv.tablets_per_unit    AS "tabletsPerUnit",
+            pv.allow_loose_selling AS "allowLooseSelling",
+            pv.loose_unit          AS "looseUnit",
+            pv.pack_size           AS "packSize",
+            b.expiry_date          AS "expiryDate",
+            b.batch_number         AS "batchNumber"
           FROM products p
           LEFT JOIN tax_rules tr
             ON tr.tax_rule_id = p.tax_rule_id
           LEFT JOIN LATERAL (
-            SELECT variant_id, variant_attributes
+            SELECT variant_id, variant_attributes, tablets_per_unit, allow_loose_selling, loose_unit, pack_size
             FROM product_variants
             WHERE product_id = p.product_id
               AND store_id   = ${storeId}::uuid
@@ -311,31 +319,33 @@ async function searchProducts(request, reply) {
         `
             : await prisma_1.prisma.$queryRaw `
           SELECT
-            p.product_id      AS "productId",
+            p.product_id           AS "productId",
             p.name,
-            p.internal_sku    AS "internalSku",
-            p.hsn_code        AS "hsnCode",
-            p.selling_price   AS "sellingPrice",
+            p.internal_sku         AS "internalSku",
+            p.hsn_code             AS "hsnCode",
+            p.selling_price        AS "sellingPrice",
             p.mrp,
-            p.tax_rule_id     AS "taxRuleId",
-            p.unit_of_measure AS "unitOfMeasure",
-            p.pricing_type    AS "pricingType",
-            tr.total_rate     AS "taxRate",
-            (SELECT pv.variant_id
-             FROM product_variants pv
-             WHERE pv.product_id = p.product_id
-               AND pv.store_id   = ${storeId}::uuid
-               AND pv.is_active  = true
-             LIMIT 1) AS "variantId",
-            (SELECT pv.variant_attributes
-             FROM product_variants pv
-             WHERE pv.product_id = p.product_id
-               AND pv.store_id   = ${storeId}::uuid
-               AND pv.is_active  = true
-             LIMIT 1) AS "variantAttributes"
+            p.tax_rule_id          AS "taxRuleId",
+            p.unit_of_measure      AS "unitOfMeasure",
+            p.pricing_type         AS "pricingType",
+            tr.total_rate          AS "taxRate",
+            pv.variant_id          AS "variantId",
+            pv.variant_attributes  AS "variantAttributes",
+            pv.tablets_per_unit    AS "tabletsPerUnit",
+            pv.allow_loose_selling AS "allowLooseSelling",
+            pv.loose_unit          AS "looseUnit",
+            pv.pack_size           AS "packSize"
           FROM products p
           LEFT JOIN tax_rules tr
             ON tr.tax_rule_id = p.tax_rule_id
+          LEFT JOIN LATERAL (
+            SELECT variant_id, variant_attributes, tablets_per_unit, allow_loose_selling, loose_unit, pack_size
+            FROM product_variants
+            WHERE product_id = p.product_id
+              AND store_id   = ${storeId}::uuid
+              AND is_active  = true
+            LIMIT 1
+          ) pv ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
             AND (
@@ -514,6 +524,10 @@ async function createVariant(request, reply) {
                     priceOverride: body.priceOverride,
                     purchasePrice: body.purchasePrice,
                     stockQuantity: body.initialStock,
+                    tabletsPerUnit: body.tabletsPerUnit,
+                    allowLooseSelling: body.allowLooseSelling,
+                    looseUnit: body.looseUnit,
+                    packSize: body.packSize,
                 },
             });
             const inventory = await tx.inventory.create({
@@ -592,6 +606,10 @@ async function updateVariant(request, reply) {
                 ...(body.variantAttributes !== undefined && { variantAttributes: body.variantAttributes }),
                 ...(body.priceOverride !== undefined && { priceOverride: body.priceOverride }),
                 ...(body.purchasePrice !== undefined && { purchasePrice: body.purchasePrice }),
+                ...(body.tabletsPerUnit !== undefined && { tabletsPerUnit: body.tabletsPerUnit }),
+                ...(body.allowLooseSelling !== undefined && { allowLooseSelling: body.allowLooseSelling }),
+                ...(body.looseUnit !== undefined && { looseUnit: body.looseUnit }),
+                ...(body.packSize !== undefined && { packSize: body.packSize }),
             },
         });
         return reply.send({ success: true, data: variant });

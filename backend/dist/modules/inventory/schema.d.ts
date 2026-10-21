@@ -20,6 +20,7 @@ export declare const StockAdjustmentSchema: z.ZodObject<{
 }>;
 export declare const CreatePurchaseSchema: z.ZodObject<{
     supplierName: z.ZodOptional<z.ZodString>;
+    vendorGstin: z.ZodOptional<z.ZodString>;
     brandId: z.ZodOptional<z.ZodString>;
     invoiceNumber: z.ZodOptional<z.ZodString>;
     purchaseDate: z.ZodDefault<z.ZodString>;
@@ -63,6 +64,7 @@ export declare const CreatePurchaseSchema: z.ZodObject<{
     brandId?: string | undefined;
     notes?: string | undefined;
     supplierName?: string | undefined;
+    vendorGstin?: string | undefined;
     invoiceNumber?: string | undefined;
 }, {
     items: {
@@ -77,6 +79,7 @@ export declare const CreatePurchaseSchema: z.ZodObject<{
     brandId?: string | undefined;
     notes?: string | undefined;
     supplierName?: string | undefined;
+    vendorGstin?: string | undefined;
     invoiceNumber?: string | undefined;
     purchaseDate?: string | undefined;
     exchangeRate?: number | undefined;

@@ -46,7 +46,13 @@ async function getSalesSummary(request, reply) {
     if (!parsed.success) {
         return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
     }
-    const { from, to } = parsed.data;
+    let { from, to } = parsed.data;
+    // Use X-Client-Date as authoritative today when caller passes a single-day range
+    const clientDate = request.headers['x-client-date'];
+    if (clientDate && from === to) {
+        from = clientDate;
+        to = clientDate;
+    }
     const fromDate = new Date(from);
     const toDate = new Date(to);
     const rawRows = await prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
