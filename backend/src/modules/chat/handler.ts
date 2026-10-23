@@ -326,7 +326,7 @@ export async function chat(
     .join('\n');
 
   // buildFocusedContext sends only schemas + examples relevant to this message
-  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildFocusedContext(message, storeId, clientDate, clientTz)}`;
+  const sqlSystem = `You are a PostgreSQL expert for a retail POS system.\n\n${buildFocusedContext(message, storeId, clientDate, clientTz)}\n\nIMPORTANT: If the user's question is NOT about store data (sales, inventory, customers, purchases, GST, reports, products, billing), respond with exactly: NOT_STORE_QUERY`;
 
   let generatedSQL:  string | null                 = null;
   let sqlResult:     Record<string, unknown>[]      = [];
@@ -362,6 +362,23 @@ export async function chat(
 
     try {
       const sqlResp = await ollamaGenerate(sqlPrompt, sqlSystem, 400);
+
+      if (sqlResp.includes('NOT_STORE_QUERY')) {
+        history.push({ role: 'user',      content: message });
+        history.push({ role: 'assistant', content: 'I can only answer questions about your store. Please ask about sales, inventory, customers, purchases, or GST reports.' });
+        if (history.length > 20) history = history.slice(-20);
+        try { await redis.setex(historyKey, 86400, JSON.stringify(history)); } catch { /* non-fatal */ }
+        return reply.send({
+          success: true,
+          data: {
+            response:       'I can only answer questions about your store. Please ask about sales, inventory, customers, purchases, or GST reports.',
+            sql:            null,
+            data:           [],
+            chartData:      null,
+            conversationId,
+          },
+        });
+      }
 
       if (!sqlResp.includes('NO_SQL')) {
         const extracted = extractSQL(sqlResp);
@@ -432,7 +449,9 @@ export async function chat(
 
   // ── Step 4 — Natural language response ────────────────────
   const nlSystem =
-`You are a helpful, friendly retail assistant for BillFlow POS.
+`You are a store assistant AI for BillFlow POS. You ONLY answer questions about store data — sales, inventory, customers, purchases, GST. If the user asks anything NOT related to store data (general knowledge, current events, advice, explanations, etc.), respond with exactly: "I can only answer questions about your store. Please ask about sales, inventory, customers, purchases, or GST reports."
+
+You are a helpful, friendly retail assistant for BillFlow POS.
 Respond in the SAME language as the user (Hindi/English/Hinglish — match their style exactly).
 Use ₹ for rupees. Be concise and clear. Do NOT mention SQL, databases, or technical terms.
 If data is given, summarise it in 1-3 sentences, then list the key facts as bullet points.
