@@ -82,6 +82,11 @@ async function createInvoice(request, reply) {
         };
     });
     const grandTotal = subtotal - discountTotal + taxTotal;
+    const rawBody = request.body;
+    const clientGrandTotal = Number(rawBody['grandTotal'] ?? 0);
+    if (clientGrandTotal > 0 && Math.abs(grandTotal - clientGrandTotal) > 1) {
+        request.log.warn({ serverGrandTotal: grandTotal, clientGrandTotal, diff: grandTotal - clientGrandTotal }, 'Grand total mismatch > ₹1 — using server-calculated value');
+    }
     const creditAmount = body.paymentMode === 'CREDIT' ? grandTotal : 0;
     const invoice = await prisma_1.prisma.invoice.create({
         data: {
