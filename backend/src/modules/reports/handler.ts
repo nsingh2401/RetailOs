@@ -144,9 +144,6 @@ export async function getSalesSummary(
     from = clientDate;
     to   = clientDate;
   }
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
-
   const rawRows = await prisma.$queryRaw<DailySalesRow[]>(
     Prisma.sql`
       SELECT
@@ -158,8 +155,8 @@ export async function getSalesSummary(
         unique_customers
       FROM v_daily_sales
       WHERE store_id     = ${storeId}::uuid
-        AND invoice_date >= ${fromDate}::date
-        AND invoice_date <= ${toDate}::date
+        AND invoice_date >= ${from}::date
+        AND invoice_date <= ${to}::date
       ORDER BY invoice_date DESC
     `,
   );
@@ -197,8 +194,6 @@ export async function getTopProducts(
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to, limit, sortBy } = parsed.data;
-  const fromDate  = new Date(from);
-  const toDate    = new Date(to);
   const orderCol  = sortBy === 'quantity' ? Prisma.raw('total_quantity') : Prisma.raw('total_revenue');
 
   const rawRows = await prisma.$queryRaw<TopProductRow[]>(
@@ -213,8 +208,8 @@ export async function getTopProducts(
       JOIN invoices i ON i.invoice_id = ili.invoice_id
       WHERE i.store_id     = ${storeId}::uuid
         AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND i.invoice_date >= ${fromDate}::date
-        AND i.invoice_date <= ${toDate}::date
+        AND i.invoice_date >= ${from}::date
+        AND i.invoice_date <= ${to}::date
       GROUP BY ili.variant_id, ili.product_name
       ORDER BY ${orderCol} DESC
       LIMIT ${limit}
@@ -239,8 +234,6 @@ export async function getSlowMovers(
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
 
   const storeRow = await prisma.store.findUnique({
     where:  { storeId },
@@ -250,9 +243,10 @@ export async function getSlowMovers(
   const lowStockThresh  = storeRow?.lowStockThreshold  ?? 10;
 
   // Previous period of same length immediately before current period
-  const periodMs    = toDate.getTime() - fromDate.getTime();
-  const prevToDate  = new Date(fromDate.getTime() - 86_400_000);
-  const prevFromDate = new Date(prevToDate.getTime() - periodMs);
+  const fromMs      = new Date(from).getTime();
+  const periodMs    = new Date(to).getTime() - fromMs;
+  const prevToStr   = new Date(fromMs - 86_400_000).toISOString().slice(0, 10);
+  const prevFromStr = new Date(new Date(prevToStr).getTime() - periodMs).toISOString().slice(0, 10);
 
   const rawRows = await prisma.$queryRaw<SlowMoverRow[]>(
     Prisma.sql`
@@ -262,8 +256,8 @@ export async function getSlowMovers(
         JOIN invoices i ON i.invoice_id = ili.invoice_id
         WHERE i.store_id = ${storeId}::uuid
           AND i.status   IN ('PAID', 'CONFIRMED', 'PARTIAL')
-          AND DATE(i.invoice_date) >= ${fromDate}::date
-          AND DATE(i.invoice_date) <= ${toDate}::date
+          AND DATE(i.invoice_date) >= ${from}::date
+          AND DATE(i.invoice_date) <= ${to}::date
         GROUP BY ili.variant_id
       ),
       prev_sales AS (
@@ -272,8 +266,8 @@ export async function getSlowMovers(
         JOIN invoices i ON i.invoice_id = ili.invoice_id
         WHERE i.store_id = ${storeId}::uuid
           AND i.status   IN ('PAID', 'CONFIRMED', 'PARTIAL')
-          AND DATE(i.invoice_date) >= ${prevFromDate}::date
-          AND DATE(i.invoice_date) <= ${prevToDate}::date
+          AND DATE(i.invoice_date) >= ${prevFromStr}::date
+          AND DATE(i.invoice_date) <= ${prevToStr}::date
         GROUP BY ili.variant_id
       )
       SELECT
@@ -320,9 +314,6 @@ export async function getTaxSummary(
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
-
   const rawRows = await prisma.$queryRaw<TaxSummaryRow[]>(
     Prisma.sql`
       SELECT
@@ -336,8 +327,8 @@ export async function getTaxSummary(
       LEFT JOIN hsn_codes h ON h.hsn_code = ili.hsn_code
       WHERE i.store_id     = ${storeId}::uuid
         AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND i.invoice_date >= ${fromDate}::date
-        AND i.invoice_date <= ${toDate}::date
+        AND i.invoice_date >= ${from}::date
+        AND i.invoice_date <= ${to}::date
       GROUP BY ili.hsn_code, h.description
       ORDER BY total_tax DESC
     `,
@@ -451,9 +442,6 @@ export async function getPurchaseSummary(
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
-
   const rawRows = await prisma.$queryRaw<PurchaseSummaryRow[]>(
     Prisma.sql`
       SELECT
@@ -464,8 +452,8 @@ export async function getPurchaseSummary(
       FROM purchase_entries pe
       LEFT JOIN brands b ON b.brand_id = pe.brand_id
       WHERE pe.store_id      = ${storeId}::uuid
-        AND pe.purchase_date >= ${fromDate}::date
-        AND pe.purchase_date <= ${toDate}::date
+        AND pe.purchase_date >= ${from}::date
+        AND pe.purchase_date <= ${to}::date
       GROUP BY pe.brand_id, b.name
       ORDER BY total_amount DESC
     `,
@@ -498,9 +486,6 @@ export async function getPaymentModes(
     return reply.status(400).send({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
-
   const rawRows = await prisma.$queryRaw<PaymentModeRow[]>(
     Prisma.sql`
       SELECT
@@ -510,8 +495,8 @@ export async function getPaymentModes(
       FROM invoices
       WHERE store_id     = ${storeId}::uuid
         AND status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND invoice_date >= ${fromDate}::date
-        AND invoice_date <= ${toDate}::date
+        AND invoice_date >= ${from}::date
+        AND invoice_date <= ${to}::date
         AND payment_mode IS NOT NULL
       GROUP BY payment_mode
       ORDER BY total_amount DESC
@@ -532,7 +517,7 @@ export async function getPaymentModes(
 }
 
 // â”€â”€ Shared: fetch GSTR-1 data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
+async function fetchGstr1Data(storeId: string, from: string, to: string) {
   const [b2cLargeRaw, b2cSmallRaw, hsnRaw] = await Promise.all([
     prisma.$queryRaw<GstrB2CLargeRow[]>(Prisma.sql`
       SELECT
@@ -550,8 +535,8 @@ async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
       JOIN invoice_line_items ili ON ili.invoice_id = i.invoice_id
       WHERE i.store_id     = ${storeId}::uuid
         AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND i.invoice_date >= ${fromDate}::date
-        AND i.invoice_date <= ${toDate}::date
+        AND i.invoice_date >= ${from}::date
+        AND i.invoice_date <= ${to}::date
         AND i.grand_total  > 250000
       GROUP BY i.invoice_id, i.invoice_number,
                i.invoice_date, i.grand_total
@@ -575,8 +560,8 @@ async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
         JOIN invoices i ON i.invoice_id = ili.invoice_id
         WHERE i.store_id     = ${storeId}::uuid
           AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-          AND i.invoice_date >= ${fromDate}::date
-          AND i.invoice_date <= ${toDate}::date
+          AND i.invoice_date >= ${from}::date
+          AND i.invoice_date <= ${to}::date
           AND i.grand_total  <= 250000
       ) sub
       GROUP BY line_tax_rate
@@ -597,8 +582,8 @@ async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
       LEFT JOIN hsn_codes h  ON h.hsn_code    = ili.hsn_code
       WHERE i.store_id     = ${storeId}::uuid
         AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND i.invoice_date >= ${fromDate}::date
-        AND i.invoice_date <= ${toDate}::date
+        AND i.invoice_date >= ${from}::date
+        AND i.invoice_date <= ${to}::date
       GROUP BY ili.hsn_code, h.description, p.unit_of_measure::text
       ORDER BY taxable_amount DESC
     `),
@@ -617,7 +602,7 @@ async function fetchGstr1Data(storeId: string, fromDate: Date, toDate: Date) {
 }
 
 // â”€â”€ Shared: fetch GSTR-3B data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-async function fetchGstr3bData(storeId: string, fromDate: Date, toDate: Date) {
+async function fetchGstr3bData(storeId: string, from: string, to: string) {
   const rateRows = await prisma.$queryRaw<Gstr3bRateRow[]>(Prisma.sql`
     SELECT
       line_tax_rate::int  AS tax_rate,
@@ -636,8 +621,8 @@ async function fetchGstr3bData(storeId: string, fromDate: Date, toDate: Date) {
       JOIN invoices i ON i.invoice_id = ili.invoice_id
       WHERE i.store_id     = ${storeId}::uuid
         AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-        AND i.invoice_date >= ${fromDate}::date
-        AND i.invoice_date <= ${toDate}::date
+        AND i.invoice_date >= ${from}::date
+        AND i.invoice_date <= ${to}::date
     ) sub
     GROUP BY line_tax_rate
     ORDER BY line_tax_rate
@@ -679,7 +664,7 @@ export async function getGstr1(
         message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const data = await fetchGstr1Data(request.storeId, new Date(from), new Date(to));
+  const data = await fetchGstr1Data(request.storeId, from, to);
   return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
 
@@ -696,7 +681,7 @@ export async function getGstr3b(
         message: parsed.error.errors[0].message, statusCode: 400 } });
   }
   const { from, to } = parsed.data;
-  const data = await fetchGstr3bData(request.storeId, new Date(from), new Date(to));
+  const data = await fetchGstr3bData(request.storeId, from, to);
   return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
 
@@ -795,15 +780,15 @@ async function buildGstr3bExcel(
 }
 
 async function buildSalesExcel(
-  storeId: string, fromDate: Date, toDate: Date,
+  storeId: string, from: string, to: string,
 ): Promise<Buffer> {
   const rawRows = await prisma.$queryRaw<DailySalesRow[]>(Prisma.sql`
     SELECT invoice_date, invoice_count, total_revenue_base,
            total_tax, total_discount, unique_customers
     FROM v_daily_sales
     WHERE store_id     = ${storeId}::uuid
-      AND invoice_date >= ${fromDate}::date
-      AND invoice_date <= ${toDate}::date
+      AND invoice_date >= ${from}::date
+      AND invoice_date <= ${to}::date
     ORDER BY invoice_date DESC
   `);
   const rows = rawRows.map(serializeRow);
@@ -855,22 +840,20 @@ export async function exportReport(
   }
   const { type, format, from, to } = parsed.data;
   const storeId  = request.storeId;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
   const label    = `${type.toUpperCase()}_${from}_${to}`;
 
   if (format === 'json') {
     let data: unknown;
-    if      (type === 'gstr1')  data = await fetchGstr1Data(storeId, fromDate, toDate);
-    else if (type === 'gstr3b') data = await fetchGstr3bData(storeId, fromDate, toDate);
+    if      (type === 'gstr1')  data = await fetchGstr1Data(storeId, from, to);
+    else if (type === 'gstr3b') data = await fetchGstr3bData(storeId, from, to);
     else {
       const rawRows = await prisma.$queryRaw<DailySalesRow[]>(Prisma.sql`
         SELECT invoice_date, invoice_count, total_revenue_base,
                total_tax, total_discount, unique_customers
         FROM v_daily_sales
         WHERE store_id     = ${storeId}::uuid
-          AND invoice_date >= ${fromDate}::date
-          AND invoice_date <= ${toDate}::date
+          AND invoice_date >= ${from}::date
+          AND invoice_date <= ${to}::date
         ORDER BY invoice_date DESC
       `);
       data = rawRows.map(serializeRow);
@@ -882,9 +865,9 @@ export async function exportReport(
 
   // Excel
   let buffer: Buffer;
-  if      (type === 'gstr1')  buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, fromDate, toDate));
-  else if (type === 'gstr3b') buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, fromDate, toDate));
-  else                        buffer = await buildSalesExcel(storeId, fromDate, toDate);
+  if      (type === 'gstr1')  buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, from, to));
+  else if (type === 'gstr3b') buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, from, to));
+  else                        buffer = await buildSalesExcel(storeId, from, to);
 
   reply.header('Content-Disposition',
     `attachment; filename="${label}.xlsx"`);
@@ -911,7 +894,7 @@ interface TallyLineRow {
 }
 
 // â”€â”€ Shared: fetch Tally line-item data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-async function fetchTallyData(storeId: string, fromDate: Date, toDate: Date) {
+async function fetchTallyData(storeId: string, from: string, to: string) {
   const rows = await prisma.$queryRaw<TallyLineRow[]>(Prisma.sql`
     SELECT
       i.invoice_number,
@@ -938,8 +921,8 @@ async function fetchTallyData(storeId: string, fromDate: Date, toDate: Date) {
     LEFT JOIN customers c       ON c.customer_id = i.customer_id
     WHERE i.store_id     = ${storeId}::uuid
       AND i.status       IN ('PAID', 'CONFIRMED', 'PARTIAL')
-      AND i.invoice_date >= ${fromDate}::date
-      AND i.invoice_date <= ${toDate}::date
+      AND i.invoice_date >= ${from}::date
+      AND i.invoice_date <= ${to}::date
     ORDER BY i.invoice_date, i.invoice_number, ili.line_item_id
   `);
   return rows.map(serializeRow);
@@ -1123,13 +1106,11 @@ export async function getTallyExport(
   }
   const { format, tallyVersion, from, to } = parsed.data;
   const storeId  = request.storeId;
-  const fromDate = new Date(from);
-  const toDate   = new Date(to);
   const label    = `Tally_${from}_${to}`;
   console.log('[TallyExport] fetchTallyData start', { storeId, from, to });
   let rows: Awaited<ReturnType<typeof fetchTallyData>>;
   try {
-    rows = await fetchTallyData(storeId, fromDate, toDate);
+    rows = await fetchTallyData(storeId, from, to);
     console.log('[TallyExport] fetchTallyData complete', { rowCount: rows.length });
   } catch (err) {
     console.error('[TallyExport] fetchTallyData error:', (err as Error).stack ?? err);

@@ -77,7 +77,7 @@ export async function getRevenueSeries(
     '365d': 365,
   };
   const days = periodMap[request.query.period ?? '30d'] ?? 30;
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const sinceStr = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const rows = await prisma.$queryRaw<
     { date: Date; revenue: string; invoice_count: string }[]
@@ -88,7 +88,7 @@ export async function getRevenueSeries(
       COUNT(*)                                AS invoice_count
     FROM invoices
     WHERE
-      invoice_date >= ${since}::date
+      invoice_date >= ${sinceStr}::date
       AND status IN ('CONFIRMED', 'PAID', 'PARTIAL')
     GROUP BY DATE_TRUNC('day', invoice_date)
     ORDER BY date ASC
