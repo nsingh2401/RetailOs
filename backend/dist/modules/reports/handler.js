@@ -516,7 +516,33 @@ async function getGstr3b(request, reply) {
     const data = await fetchGstr3bData(request.storeId, from, to);
     return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
-// â”€â”€ Excel helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function currencyNumFmt(symbol, decimalPlaces) {
+    const dec = decimalPlaces > 0 ? '.' + '0'.repeat(decimalPlaces) : '';
+    const esc = symbol.replace(/”/g, '\\”');
+    return `”${esc}”#,##0${dec}`;
+}
+async function getStoreCurrency(storeId) {
+    const store = await prisma_1.prisma.store.findUnique({
+        where: { storeId },
+        select: { currencyCode: true },
+    });
+    const code = store?.currencyCode ?? 'INR';
+    const cur = await prisma_1.prisma.currency.findUnique({
+        where: { currencyCode: code },
+        select: { symbol: true, decimalPlaces: true },
+    });
+    const symbol = cur?.symbol ?? '₹';
+    const decimalPlaces = cur?.decimalPlaces ?? 2;
+    return { symbol, numFmt: currencyNumFmt(symbol, decimalPlaces) };
+}
+function applyNumFmt(ws, keys, numFmt) {
+    for (const key of keys) {
+        try {
+            ws.getColumn(key).numFmt = numFmt;
+        }
+        catch { /* skip */ }
+    }
+}
 function styleHeader(ws) {
     const headerRow = ws.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -524,7 +550,7 @@ function styleHeader(ws) {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 }
-async function buildGstr1Excel(data) {
+async function buildGstr1Excel(data, cur) {
     const wb = new exceljs_1.default.Workbook();
     const ws1 = wb.addWorksheet('B2C Large');
     ws1.columns = [
@@ -538,6 +564,7 @@ async function buildGstr1Excel(data) {
         { header: 'IGST', key: 'igst', width: 15 },
     ];
     styleHeader(ws1);
+    applyNumFmt(ws1, ['grand_total', 'taxable_amount', 'cgst', 'sgst', 'igst'], cur.numFmt);
     for (const r of data.b2cLarge) {
         ws1.addRow({
             ...r,
@@ -557,6 +584,7 @@ async function buildGstr1Excel(data) {
         { header: 'IGST', key: 'igst', width: 15 },
     ];
     styleHeader(ws2);
+    applyNumFmt(ws2, ['taxable_amount', 'cgst', 'sgst', 'igst'], cur.numFmt);
     for (const r of data.b2cSmall) {
         ws2.addRow({ tax_rate: Number(r.tax_rate ?? 0),
             taxable_amount: Number(r.taxable_amount ?? 0),
@@ -574,6 +602,7 @@ async function buildGstr1Excel(data) {
         { header: 'IGST', key: 'igst', width: 15 },
     ];
     styleHeader(ws3);
+    applyNumFmt(ws3, ['taxable_amount', 'cgst', 'sgst', 'igst'], cur.numFmt);
     for (const r of data.hsnSummary) {
         ws3.addRow({ ...r,
             total_quantity: Number(r.total_quantity ?? 0),
@@ -581,7 +610,7 @@ async function buildGstr1Excel(data) {
     }
     return wb.xlsx.writeBuffer();
 }
-async function buildGstr3bExcel(data) {
+async function buildGstr3bExcel(data, cur) {
     const wb = new exceljs_1.default.Workbook();
     const ws = wb.addWorksheet('GSTR-3B Table 3.1');
     ws.columns = [
@@ -593,6 +622,7 @@ async function buildGstr3bExcel(data) {
         { header: 'Cess', key: 'cess', width: 12 },
     ];
     styleHeader(ws);
+    applyNumFmt(ws, ['taxableValue', 'cgst', 'sgst', 'igst', 'cess'], cur.numFmt);
     for (const r of data.table31)
         ws.addRow(r);
     ws.addRow({ taxRate: 0, taxableValue: data.nilExempt, cgst: 0, sgst: 0, igst: 0, cess: 0 });
@@ -600,7 +630,7 @@ async function buildGstr3bExcel(data) {
     tot.font = { bold: true };
     return wb.xlsx.writeBuffer();
 }
-async function buildSalesExcel(storeId, from, to) {
+async function buildSalesExcel(storeId, from, to, cur) {
     const rawRows = await prisma_1.prisma.$queryRaw(client_1.Prisma.sql `
     SELECT invoice_date, invoice_count, total_revenue_base,
            total_tax, total_discount, unique_customers
@@ -622,6 +652,7 @@ async function buildSalesExcel(storeId, from, to) {
         { header: 'Unique Cust.', key: 'unique_customers', width: 14 },
     ];
     styleHeader(ws);
+    applyNumFmt(ws, ['total_revenue_base', 'total_tax', 'total_discount'], cur.numFmt);
     for (const r of rows) {
         ws.addRow({ ...r,
             invoice_date: r.invoice_date
@@ -678,14 +709,15 @@ async function exportReport(request, reply) {
         reply.header('Content-Type', 'application/json');
         return reply.send(JSON.stringify({ period: { from, to }, data }, null, 2));
     }
-    // Excel
+    // Excel — look up store currency once, pass to all builders
+    const cur = await getStoreCurrency(storeId);
     let buffer;
     if (type === 'gstr1')
-        buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, from, to));
+        buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, from, to), cur);
     else if (type === 'gstr3b')
-        buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, from, to));
+        buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, from, to), cur);
     else
-        buffer = await buildSalesExcel(storeId, from, to);
+        buffer = await buildSalesExcel(storeId, from, to, cur);
     reply.header('Content-Disposition', `attachment; filename="${label}.xlsx"`);
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     return reply.send(buffer);

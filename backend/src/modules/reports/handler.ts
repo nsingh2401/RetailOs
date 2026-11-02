@@ -685,7 +685,39 @@ export async function getGstr3b(
   return reply.send({ success: true, data: { period: { from, to }, ...data } });
 }
 
-// â”€â”€ Excel helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Excel helpers ────────────────────────────────────────────────────────────
+
+interface CurrencyMeta { symbol: string; numFmt: string; }
+
+function currencyNumFmt(symbol: string, decimalPlaces: number): string {
+  const dec = decimalPlaces > 0 ? '.' + '0'.repeat(decimalPlaces) : '';
+  const esc = symbol.replace(/”/g, '\\”');
+  return `”${esc}”#,##0${dec}`;
+}
+
+async function getStoreCurrency(storeId: string): Promise<CurrencyMeta> {
+  const store = await prisma.store.findUnique({
+    where:  { storeId },
+    select: { currencyCode: true },
+  });
+  const code = store?.currencyCode ?? 'INR';
+  const cur  = await prisma.currency.findUnique({
+    where:  { currencyCode: code },
+    select: { symbol: true, decimalPlaces: true },
+  });
+  const symbol        = cur?.symbol        ?? '₹';
+  const decimalPlaces = cur?.decimalPlaces ?? 2;
+  return { symbol, numFmt: currencyNumFmt(symbol, decimalPlaces) };
+}
+
+function applyNumFmt(
+  ws: ExcelJS.Worksheet, keys: string[], numFmt: string,
+) {
+  for (const key of keys) {
+    try { ws.getColumn(key).numFmt = numFmt; } catch { /* skip */ }
+  }
+}
+
 function styleHeader(ws: ExcelJS.Worksheet) {
   const headerRow     = ws.getRow(1);
   headerRow.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -696,6 +728,7 @@ function styleHeader(ws: ExcelJS.Worksheet) {
 
 async function buildGstr1Excel(
   data: Awaited<ReturnType<typeof fetchGstr1Data>>,
+  cur: CurrencyMeta,
 ): Promise<Buffer> {
   const wb  = new ExcelJS.Workbook();
 
@@ -711,6 +744,9 @@ async function buildGstr1Excel(
     { header: 'IGST',          key: 'igst',             width: 15 },
   ];
   styleHeader(ws1);
+  applyNumFmt(ws1,
+    ['grand_total','taxable_amount','cgst','sgst','igst'],
+    cur.numFmt);
   for (const r of data.b2cLarge) {
     ws1.addRow({
       ...r,
@@ -731,6 +767,7 @@ async function buildGstr1Excel(
     { header: 'IGST',          key: 'igst',           width: 15 },
   ];
   styleHeader(ws2);
+  applyNumFmt(ws2, ['taxable_amount','cgst','sgst','igst'], cur.numFmt);
   for (const r of data.b2cSmall) {
     ws2.addRow({ tax_rate: Number((r as any).tax_rate ?? 0),
       taxable_amount: Number(r.taxable_amount ?? 0),
@@ -749,6 +786,7 @@ async function buildGstr1Excel(
     { header: 'IGST',          key: 'igst',            width: 15 },
   ];
   styleHeader(ws3);
+  applyNumFmt(ws3, ['taxable_amount','cgst','sgst','igst'], cur.numFmt);
   for (const r of data.hsnSummary) {
     ws3.addRow({ ...r,
       total_quantity: Number((r as any).total_quantity ?? 0),
@@ -760,6 +798,7 @@ async function buildGstr1Excel(
 
 async function buildGstr3bExcel(
   data: Awaited<ReturnType<typeof fetchGstr3bData>>,
+  cur: CurrencyMeta,
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('GSTR-3B Table 3.1');
@@ -772,6 +811,7 @@ async function buildGstr3bExcel(
     { header: 'Cess',          key: 'cess',         width: 12 },
   ];
   styleHeader(ws);
+  applyNumFmt(ws, ['taxableValue','cgst','sgst','igst','cess'], cur.numFmt);
   for (const r of data.table31) ws.addRow(r);
   ws.addRow({ taxRate: 0, taxableValue: data.nilExempt, cgst: 0, sgst: 0, igst: 0, cess: 0 });
   const tot = ws.addRow({ taxRate: 'TOTAL', ...data.grandTotals });
@@ -781,6 +821,7 @@ async function buildGstr3bExcel(
 
 async function buildSalesExcel(
   storeId: string, from: string, to: string,
+  cur: CurrencyMeta,
 ): Promise<Buffer> {
   const rawRows = await prisma.$queryRaw<DailySalesRow[]>(Prisma.sql`
     SELECT invoice_date, invoice_count, total_revenue_base,
@@ -803,6 +844,7 @@ async function buildSalesExcel(
     { header: 'Unique Cust.', key: 'unique_customers',   width: 14 },
   ];
   styleHeader(ws);
+  applyNumFmt(ws, ['total_revenue_base','total_tax','total_discount'], cur.numFmt);
   for (const r of rows) {
     ws.addRow({ ...r,
       invoice_date: r.invoice_date
@@ -863,11 +905,12 @@ export async function exportReport(
     return reply.send(JSON.stringify({ period: { from, to }, data }, null, 2));
   }
 
-  // Excel
+  // Excel — look up store currency once, pass to all builders
+  const cur = await getStoreCurrency(storeId);
   let buffer: Buffer;
-  if      (type === 'gstr1')  buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, from, to));
-  else if (type === 'gstr3b') buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, from, to));
-  else                        buffer = await buildSalesExcel(storeId, from, to);
+  if      (type === 'gstr1')  buffer = await buildGstr1Excel(await fetchGstr1Data(storeId, from, to), cur);
+  else if (type === 'gstr3b') buffer = await buildGstr3bExcel(await fetchGstr3bData(storeId, from, to), cur);
+  else                        buffer = await buildSalesExcel(storeId, from, to, cur);
 
   reply.header('Content-Disposition',
     `attachment; filename="${label}.xlsx"`);

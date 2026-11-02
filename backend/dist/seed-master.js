@@ -1478,7 +1478,55 @@ async function seedBrands() {
         + ` (${brands.length} brands)`);
 }
 // ─────────────────────────────────────────────────
-// SECTION 5 — Main
+// SECTION 5 — Currencies
+// ─────────────────────────────────────────────────
+async function seedCurrencies() {
+    const currencies = [
+        { currencyCode: 'INR', name: 'Indian Rupee', symbol: '₹', decimalPlaces: 2 },
+        { currencyCode: 'USD', name: 'US Dollar', symbol: '$', decimalPlaces: 2 },
+        { currencyCode: 'EUR', name: 'Euro', symbol: '€', decimalPlaces: 2 },
+        { currencyCode: 'GBP', name: 'British Pound', symbol: '£', decimalPlaces: 2 },
+        { currencyCode: 'JPY', name: 'Japanese Yen', symbol: '¥', decimalPlaces: 0 },
+        { currencyCode: 'AED', name: 'UAE Dirham', symbol: 'د.إ', decimalPlaces: 2 },
+        { currencyCode: 'SGD', name: 'Singapore Dollar', symbol: 'S$', decimalPlaces: 2 },
+        { currencyCode: 'AUD', name: 'Australian Dollar', symbol: 'A$', decimalPlaces: 2 },
+        { currencyCode: 'CAD', name: 'Canadian Dollar', symbol: 'C$', decimalPlaces: 2 },
+        { currencyCode: 'CHF', name: 'Swiss Franc', symbol: 'Fr', decimalPlaces: 2 },
+        { currencyCode: 'HKD', name: 'Hong Kong Dollar', symbol: 'HK$', decimalPlaces: 2 },
+        { currencyCode: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM', decimalPlaces: 2 },
+        { currencyCode: 'THB', name: 'Thai Baht', symbol: '฿', decimalPlaces: 2 },
+        { currencyCode: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', decimalPlaces: 0 },
+        { currencyCode: 'PHP', name: 'Philippine Peso', symbol: '₱', decimalPlaces: 2 },
+        { currencyCode: 'BDT', name: 'Bangladeshi Taka', symbol: '৳', decimalPlaces: 2 },
+        { currencyCode: 'NPR', name: 'Nepalese Rupee', symbol: 'Rs', decimalPlaces: 2 },
+        { currencyCode: 'PKR', name: 'Pakistani Rupee', symbol: '₨', decimalPlaces: 2 },
+        { currencyCode: 'LKR', name: 'Sri Lankan Rupee', symbol: 'Rs', decimalPlaces: 2 },
+        { currencyCode: 'SAR', name: 'Saudi Riyal', symbol: '﷼', decimalPlaces: 2 },
+        { currencyCode: 'QAR', name: 'Qatari Riyal', symbol: '﷼', decimalPlaces: 2 },
+        { currencyCode: 'KWD', name: 'Kuwaiti Dinar', symbol: 'KD', decimalPlaces: 3 },
+        { currencyCode: 'OMR', name: 'Omani Rial', symbol: 'OMR', decimalPlaces: 3 },
+        { currencyCode: 'BHD', name: 'Bahraini Dinar', symbol: 'BD', decimalPlaces: 3 },
+        { currencyCode: 'ZAR', name: 'South African Rand', symbol: 'R', decimalPlaces: 2 },
+    ];
+    for (const c of currencies) {
+        await prisma.currency.upsert({
+            where: { currencyCode: c.currencyCode },
+            update: { name: c.name, symbol: c.symbol,
+                decimalPlaces: c.decimalPlaces, isActive: true },
+            create: { ...c, isActive: true },
+        });
+    }
+    console.log(`✓ currencies seeded (${currencies.length} rows)`);
+    // Bump master_data_version so all clients re-sync and receive currencies
+    await prisma.appConfig.upsert({
+        where: { key: 'master_data_version' },
+        update: { value: '2' },
+        create: { key: 'master_data_version', value: '2' },
+    });
+    console.log('✓ master_data_version bumped to 2');
+}
+// ─────────────────────────────────────────────────
+// SECTION 6 — Main
 // ─────────────────────────────────────────────────
 async function main() {
     console.log('🌱 Seeding master data...\n');
@@ -1486,17 +1534,20 @@ async function main() {
     await seedIndustryConfigs();
     await seedCategories();
     await seedBrands();
-    const [cfgCount, indCount, catCount, brandCount] = await Promise.all([
+    await seedCurrencies();
+    const [cfgCount, indCount, catCount, brandCount, curCount] = await Promise.all([
         prisma.appConfig.count(),
         prisma.masterIndustryConfig.count(),
         prisma.masterCategory.count(),
         prisma.masterBrand.count(),
+        prisma.currency.count(),
     ]);
     console.log('\n── Summary ──────────────────────');
     console.log(`  app_config rows:    ${cfgCount}`);
     console.log(`  industry configs:   ${indCount}`);
     console.log(`  master categories:  ${catCount}`);
     console.log(`  master brands:      ${brandCount}`);
+    console.log(`  currencies:         ${curCount}`);
     console.log('──────────────────────────────────');
     console.log('✅ Master data seed complete.\n');
 }

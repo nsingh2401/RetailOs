@@ -28,7 +28,7 @@ export async function getMasterDataFull(
     return reply.send({ success: true, data: cached });
   }
 
-  const [versionRow, industries, categories, brands] =
+  const [versionRow, industries, categories, brands, currencies] =
     await Promise.all([
       prisma.appConfig.findUnique({
         where: { key: 'master_data_version' },
@@ -50,6 +50,12 @@ export async function getMasterDataFull(
           { name:      'asc'  },
         ],
       }),
+      prisma.currency.findMany({
+        where:   { isActive: true },
+        select:  { currencyCode: true, name: true,
+                   symbol: true, decimalPlaces: true },
+        orderBy: { currencyCode: 'asc' },
+      }),
     ]);
 
   const payload = {
@@ -57,6 +63,7 @@ export async function getMasterDataFull(
     industries,
     categories,
     brands,
+    currencies,
   };
 
   await cacheSet(CACHE_KEY, payload, 3600);
