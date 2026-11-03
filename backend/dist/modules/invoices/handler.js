@@ -34,16 +34,48 @@ async function createInvoice(request, reply) {
     const fyYear = month >= 3 ? now.getFullYear() : now.getFullYear() - 1;
     const fy = `${String(fyYear).slice(2)}-${String(fyYear + 1).slice(2)}`;
     const fyPrefix = `INV/${fy}/`;
-    const [fyCount, storeSettings] = await Promise.all([
+    const [fyCount, storeData] = await Promise.all([
         prisma_1.prisma.invoice.count({ where: { storeId, invoiceNumber: { startsWith: fyPrefix } } }),
-        prisma_1.prisma.store.findUnique({ where: { storeId }, select: { invoiceStartNumber: true } }),
+        prisma_1.prisma.store.findUnique({
+            where: { storeId },
+            select: {
+                invoiceStartNumber: true,
+                currencyCode: true,
+                organization: { select: { defaultCurrency: true } },
+            },
+        }),
     ]);
     // Honor invoiceStartNumber only for the very first invoice of this FY
-    const nextSeq = fyCount === 0 && (storeSettings?.invoiceStartNumber ?? 0) > 0
-        ? storeSettings.invoiceStartNumber
+    const nextSeq = fyCount === 0 && (storeData?.invoiceStartNumber ?? 0) > 0
+        ? storeData.invoiceStartNumber
         : fyCount + 1;
     const invoiceNumber = body.invoiceNumber
         ?? `${fyPrefix}${String(nextSeq).padStart(4, '0')}`;
+    // ── Currency & exchange rate (server-authoritative) ──────────
+    const storeCurrency = storeData?.currencyCode ?? 'INR';
+    const orgCurrency = storeData?.organization?.defaultCurrency ?? 'INR';
+    let exchangeRate = 1;
+    if (storeCurrency !== orgCurrency) {
+        const fxRow = await prisma_1.prisma.fxRate.findFirst({
+            where: {
+                baseCurrency: storeCurrency,
+                quoteCurrency: orgCurrency,
+                effectiveDate: { lte: invoiceDate },
+            },
+            orderBy: { effectiveDate: 'desc' },
+        });
+        if (!fxRow) {
+            return reply.status(422).send({
+                success: false,
+                error: {
+                    code: 'FX_RATE_NOT_FOUND',
+                    message: `No exchange rate found for ${storeCurrency} → ${orgCurrency}. Please add an FX rate for today.`,
+                    statusCode: 422,
+                },
+            });
+        }
+        exchangeRate = Number(fxRow.rate);
+    }
     // Fetch product name snapshots for all variants
     const variantIds = [...new Set(body.lineItems.map(i => i.variantId))];
     const variants = await prisma_1.prisma.productVariant.findMany({
@@ -82,6 +114,7 @@ async function createInvoice(request, reply) {
         };
     });
     const grandTotal = subtotal - discountTotal + taxTotal;
+    const grandTotalBase = grandTotal * exchangeRate;
     const rawBody = request.body;
     const clientGrandTotal = Number(rawBody['grandTotal'] ?? 0);
     if (clientGrandTotal > 0 && Math.abs(grandTotal - clientGrandTotal) > 1) {
@@ -94,14 +127,14 @@ async function createInvoice(request, reply) {
             customerId: body.customerId,
             invoiceNumber,
             invoiceDate: invoiceDate,
-            currencyCode: body.currencyCode,
-            exchangeRate: 1,
+            currencyCode: storeCurrency,
+            exchangeRate,
             subtotal,
             taxTotal,
             discountTotal,
             roundOff: 0,
             grandTotal,
-            grandTotalBase: grandTotal,
+            grandTotalBase,
             paidAmount: 0,
             creditAmount,
             status: 'DRAFT',
