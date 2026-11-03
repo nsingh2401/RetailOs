@@ -385,7 +385,8 @@ export async function getMyStores(
   const roles = await prisma.userStoreRole.findMany({
     where:   { userId, isActive: true },
     include: {
-      store: { select: { storeId: true, name: true, industryType: true, isActive: true } },
+      store: { select: { storeId: true, name: true, industryType: true, isActive: true,
+                         currencyCode: true, timezone: true } },
     },
     orderBy: { grantedAt: 'asc' },
   });
@@ -397,6 +398,8 @@ export async function getMyStores(
       storeName:    r.store.name,
       industryType: r.store.industryType,
       isActive:     r.store.isActive,
+      currencyCode: r.store.currencyCode,
+      timezone:     r.store.timezone,
       role:         r.role,
       permissions:  r.permissions,
     })),

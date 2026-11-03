@@ -48,7 +48,8 @@ export async function verifyToken(
         userStoreRoles: {
           where: { isActive: true },
           include: {
-            store: { select: { name: true, storeCode: true, industryType: true } },
+            store: { select: { name: true, storeCode: true, industryType: true,
+                               currencyCode: true, timezone: true } },
           },
         },
         organization: {
@@ -93,6 +94,8 @@ export async function verifyToken(
           storeName:    r.store.name,
           storeCode:    r.store.storeCode,
           industryType: r.store.industryType,
+          currencyCode: r.store.currencyCode,
+          timezone:     r.store.timezone,
           role:         r.role,
           permissions:  r.permissions,
         })),
@@ -124,7 +127,8 @@ export async function getMe(request: FastifyRequest, reply: FastifyReply) {
         where: { isActive: true },
         include: {
           store: {
-            select: { storeId: true, name: true, storeCode: true, industryType: true },
+            select: { storeId: true, name: true, storeCode: true, industryType: true,
+                      currencyCode: true, timezone: true },
           },
         },
       },
@@ -162,6 +166,8 @@ export async function getMe(request: FastifyRequest, reply: FastifyReply) {
         storeName:    r.store.name,
         storeCode:    r.store.storeCode,
         industryType: r.store.industryType,
+        currencyCode: r.store.currencyCode,
+        timezone:     r.store.timezone,
         role:         r.role,
       })),
     },
@@ -662,6 +668,8 @@ export async function login(
               name: true,
               storeCode: true,
               industryType: true,
+              currencyCode: true,
+              timezone:     true,
             },
           },
         },
@@ -717,6 +725,8 @@ export async function login(
         storeName:    r.store.name,
         storeCode:    r.store.storeCode,
         industryType: r.store.industryType,
+        currencyCode: r.store.currencyCode,
+        timezone:     r.store.timezone,
         role:         r.role,
         permissions:  r.permissions,
       })),

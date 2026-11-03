@@ -323,7 +323,8 @@ async function getMyStores(request, reply) {
     const roles = await prisma_1.prisma.userStoreRole.findMany({
         where: { userId, isActive: true },
         include: {
-            store: { select: { storeId: true, name: true, industryType: true, isActive: true } },
+            store: { select: { storeId: true, name: true, industryType: true, isActive: true,
+                    currencyCode: true, timezone: true } },
         },
         orderBy: { grantedAt: 'asc' },
     });
@@ -334,6 +335,8 @@ async function getMyStores(request, reply) {
             storeName: r.store.name,
             industryType: r.store.industryType,
             isActive: r.store.isActive,
+            currencyCode: r.store.currencyCode,
+            timezone: r.store.timezone,
             role: r.role,
             permissions: r.permissions,
         })),

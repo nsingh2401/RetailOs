@@ -76,7 +76,8 @@ async function verifyToken(request, reply) {
                 userStoreRoles: {
                     where: { isActive: true },
                     include: {
-                        store: { select: { name: true, storeCode: true, industryType: true } },
+                        store: { select: { name: true, storeCode: true, industryType: true,
+                                currencyCode: true, timezone: true } },
                     },
                 },
                 organization: {
@@ -117,6 +118,8 @@ async function verifyToken(request, reply) {
                     storeName: r.store.name,
                     storeCode: r.store.storeCode,
                     industryType: r.store.industryType,
+                    currencyCode: r.store.currencyCode,
+                    timezone: r.store.timezone,
                     role: r.role,
                     permissions: r.permissions,
                 })),
@@ -145,7 +148,8 @@ async function getMe(request, reply) {
                 where: { isActive: true },
                 include: {
                     store: {
-                        select: { storeId: true, name: true, storeCode: true, industryType: true },
+                        select: { storeId: true, name: true, storeCode: true, industryType: true,
+                            currencyCode: true, timezone: true },
                     },
                 },
             },
@@ -181,6 +185,8 @@ async function getMe(request, reply) {
                 storeName: r.store.name,
                 storeCode: r.store.storeCode,
                 industryType: r.store.industryType,
+                currencyCode: r.store.currencyCode,
+                timezone: r.store.timezone,
                 role: r.role,
             })),
         },
@@ -584,6 +590,8 @@ async function login(request, reply) {
                             name: true,
                             storeCode: true,
                             industryType: true,
+                            currencyCode: true,
+                            timezone: true,
                         },
                     },
                 },
@@ -633,6 +641,8 @@ async function login(request, reply) {
                 storeName: r.store.name,
                 storeCode: r.store.storeCode,
                 industryType: r.store.industryType,
+                currencyCode: r.store.currencyCode,
+                timezone: r.store.timezone,
                 role: r.role,
                 permissions: r.permissions,
             })),
