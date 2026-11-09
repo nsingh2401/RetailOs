@@ -132,20 +132,28 @@ export async function createInvoice(
     };
   });
 
-  // B — batch-tracked sellable stock pre-flight
+  // B — batch-tracked sellable stock pre-flight (non-expired batches + unbatched stock)
   for (const item of lineData) {
     const v = variantMap.get(item.variantId);
     if (!v?.product.hasBatches) continue;
-    const agg = await prisma.batch.aggregate({
-      where: {
-        variantId: item.variantId,
-        storeId,
-        isExpired: false,
-        OR: [{ expiryDate: null }, { expiryDate: { gte: invoiceDate } }],
-      },
-      _sum: { remainingQty: true },
-    });
-    const availableQty = Number(agg._sum.remainingQty ?? 0);
+    const [sellableAgg, totalAgg, invRow] = await Promise.all([
+      prisma.batch.aggregate({
+        where: { variantId: item.variantId, storeId, isExpired: false, OR: [{ expiryDate: null }, { expiryDate: { gte: invoiceDate } }] },
+        _sum:  { remainingQty: true },
+      }),
+      prisma.batch.aggregate({
+        where: { variantId: item.variantId, storeId },
+        _sum:  { remainingQty: true },
+      }),
+      prisma.inventory.findUnique({
+        where:  { storeId_variantId: { storeId, variantId: item.variantId } },
+        select: { quantity: true },
+      }),
+    ]);
+    const sellableBatch = Number(sellableAgg._sum.remainingQty ?? 0);
+    const totalBatch    = Number(totalAgg._sum.remainingQty    ?? 0);
+    const invQty        = Number(invRow?.quantity ?? 0);
+    const availableQty  = sellableBatch + Math.max(0, invQty - totalBatch);
     if (availableQty < item.quantity) {
       return reply.status(422).send({
         success: false,
