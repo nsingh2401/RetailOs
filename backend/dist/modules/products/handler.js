@@ -203,65 +203,97 @@ async function searchProducts(request, reply) {
         // Typesense available — enrich with
         // default variantId + FEFO batch for FMCG
         const products = hits.map((h) => h.document);
-        const enriched = await Promise.all(products.map(async (p) => {
-            const [variant, product] = await Promise.all([
-                prisma_1.prisma.productVariant.findFirst({
-                    where: {
-                        productId: p.productId,
-                        storeId,
-                        isActive: true,
-                    },
-                    select: {
-                        variantId: true,
-                        variantAttributes: true,
-                    },
-                }),
-                prisma_1.prisma.product.findUnique({
-                    where: { productId: p.productId },
-                    select: {
-                        pricingType: true,
-                        taxRuleId: true,
-                        taxRule: {
-                            select: { totalRate: true },
-                        },
-                    },
-                }),
-            ]);
+        // Batched enrichment — 4 queries total instead of N×3
+        const productIds = products.map((p) => p.productId);
+        // Round 1: variants + product detail
+        const [variantRows, productRows] = await Promise.all([
+            prisma_1.prisma.productVariant.findMany({
+                where: { productId: { in: productIds }, storeId, isActive: true },
+                select: { variantId: true, productId: true, variantAttributes: true },
+            }),
+            prisma_1.prisma.product.findMany({
+                where: { productId: { in: productIds } },
+                select: {
+                    productId: true, pricingType: true, taxRuleId: true,
+                    taxRule: { select: { totalRate: true } },
+                },
+            }),
+        ]);
+        const variantByProduct = new Map();
+        for (const v of variantRows)
+            variantByProduct.set(v.productId, v);
+        const productDetail = new Map();
+        for (const pd of productRows)
+            productDetail.set(pd.productId, pd);
+        const variantIds = variantRows.map(v => v.variantId);
+        const batchPromise = isFmcgStore && variantIds.length > 0
+            ? prisma_1.prisma.batch.findMany({
+                where: { variantId: { in: variantIds }, storeId },
+                select: { variantId: true, expiryDate: true, batchNumber: true, isExpired: true, remainingQty: true },
+                orderBy: { expiryDate: 'asc' },
+            })
+            : Promise.resolve([]);
+        const invPromise = variantIds.length > 0
+            ? prisma_1.prisma.inventory.findMany({
+                where: { variantId: { in: variantIds }, storeId },
+                select: { variantId: true, quantity: true },
+            })
+            : Promise.resolve([]);
+        const [allBatches, inventoryRows] = await Promise.all([batchPromise, invPromise]);
+        const batchInfoByVariant = new Map();
+        if (isFmcgStore) {
+            const grouped = new Map();
+            for (const b of allBatches) {
+                if (!grouped.has(b.variantId))
+                    grouped.set(b.variantId, []);
+                grouped.get(b.variantId).push(b);
+            }
+            const now = new Date();
+            for (const [vid, batches] of grouped) {
+                const totalQty = batches.reduce((s, b) => s + Number(b.remainingQty), 0);
+                const sellable = batches.filter(b => !b.isExpired && (b.expiryDate == null || b.expiryDate >= now));
+                const sellableQty = sellable.reduce((s, b) => s + Number(b.remainingQty), 0);
+                const best = sellable[0]; // already ordered by expiryDate asc
+                batchInfoByVariant.set(vid, {
+                    expiryDate: best?.expiryDate ?? null,
+                    batchNumber: best?.batchNumber ?? null,
+                    hasSellable: sellable.length > 0,
+                    totalQty,
+                    sellableQty,
+                });
+            }
+        }
+        const invQtyByVariant = new Map();
+        for (const inv of inventoryRows)
+            invQtyByVariant.set(inv.variantId, Number(inv.quantity));
+        // Synchronous enrichment
+        const enriched = products.map((p) => {
+            const variant = variantByProduct.get(p.productId);
+            const pd = productDetail.get(p.productId);
             let expiryDate = null;
             let batchNumber = null;
-            let batchFound = true;
+            let hasSellableBatch = !isFmcgStore;
             if (isFmcgStore && variant?.variantId) {
-                const batch = await prisma_1.prisma.batch.findFirst({
-                    where: {
-                        variantId: variant.variantId,
-                        storeId,
-                        isExpired: false,
-                        OR: [
-                            { expiryDate: null },
-                            { expiryDate: { gte: new Date() } },
-                        ],
-                    },
-                    orderBy: { expiryDate: 'asc' },
-                    select: { expiryDate: true, batchNumber: true },
-                });
-                batchFound = batch != null;
-                expiryDate = batch?.expiryDate ?? null;
-                batchNumber = batch?.batchNumber ?? null;
+                const bmap = batchInfoByVariant.get(variant.variantId);
+                const invQty = invQtyByVariant.get(variant.variantId) ?? 0;
+                const totalBatch = bmap?.totalQty ?? 0;
+                const unbatched = Math.max(0, invQty - totalBatch);
+                hasSellableBatch = (bmap?.hasSellable ?? false) || unbatched > 0;
+                expiryDate = bmap?.expiryDate ?? null;
+                batchNumber = bmap?.batchNumber ?? null;
             }
             return {
                 ...p,
                 variantId: variant?.variantId ?? null,
                 variantAttributes: variant?.variantAttributes ?? null,
-                pricingType: product?.pricingType ?? 'FIXED',
-                taxRuleId: product?.taxRuleId ?? null,
-                taxRate: product?.taxRule
-                    ? Number(product.taxRule.totalRate)
-                    : null,
+                pricingType: pd?.pricingType ?? 'FIXED',
+                taxRuleId: pd?.taxRuleId ?? null,
+                taxRate: pd?.taxRule ? Number(pd.taxRule.totalRate) : null,
                 expiryDate,
                 batchNumber,
-                hasSellableBatch: !isFmcgStore || batchFound,
+                hasSellableBatch,
             };
-        }));
+        });
         return reply.send({
             success: true,
             data: enriched.filter((e) => e.variantId != null && e.hasSellableBatch),
@@ -303,7 +335,7 @@ async function searchProducts(request, reply) {
               AND is_active  = true
             LIMIT 1
           ) pv ON true
-          JOIN LATERAL (
+          LEFT JOIN LATERAL (
             SELECT expiry_date, batch_number
             FROM batches
             WHERE variant_id  = pv.variant_id
@@ -313,6 +345,17 @@ async function searchProducts(request, reply) {
             ORDER BY expiry_date ASC NULLS LAST
             LIMIT 1
           ) b ON true
+          LEFT JOIN inventory inv
+            ON inv.variant_id = pv.variant_id
+            AND inv.store_id  = ${storeId}::uuid
+          LEFT JOIN LATERAL (
+            SELECT
+              COALESCE(SUM(remaining_qty), 0) AS total_all,
+              COALESCE(SUM(CASE WHEN is_expired = false AND (expiry_date IS NULL OR expiry_date >= NOW()) THEN remaining_qty ELSE 0 END), 0) AS sellable_batch
+            FROM batches
+            WHERE variant_id = pv.variant_id
+              AND store_id   = ${storeId}::uuid
+          ) bsum ON true
           WHERE p.store_id = ${storeId}::uuid
             AND p.is_active = true
             AND pv.variant_id IS NOT NULL
@@ -320,6 +363,7 @@ async function searchProducts(request, reply) {
               p.name         ILIKE ${'%' + q + '%'}
               OR p.internal_sku ILIKE ${'%' + q + '%'}
             )
+            AND (bsum.sellable_batch + GREATEST(0, COALESCE(inv.quantity, 0) - bsum.total_all) > 0)
           ORDER BY b.expiry_date ASC NULLS LAST, p.name ASC
           LIMIT ${limit}
         `
@@ -410,17 +454,28 @@ async function lookupByBarcode(request, reply) {
             error: { code: 'PRODUCT_NOT_FOUND', message: `No product found for barcode ${code}`, statusCode: 404 },
         });
     }
-    // 4. Sellable-stock check for batch-tracked products
+    // 4. Sellable-stock check for batch-tracked products (include unbatched stock)
     if (result['hasBatches']) {
-        const sellable = await prisma_1.prisma.batch.findFirst({
-            where: {
-                variantId: result['variantId'],
-                storeId,
-                isExpired: false,
-                OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }],
-            },
-        });
-        if (!sellable) {
+        const variantId = result['variantId'];
+        const [sellableBatchAgg, totalBatchAgg, invRow] = await Promise.all([
+            prisma_1.prisma.batch.aggregate({
+                where: { variantId, storeId, isExpired: false, OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }] },
+                _sum: { remainingQty: true },
+            }),
+            prisma_1.prisma.batch.aggregate({
+                where: { variantId, storeId },
+                _sum: { remainingQty: true },
+            }),
+            prisma_1.prisma.inventory.findUnique({
+                where: { storeId_variantId: { storeId, variantId } },
+                select: { quantity: true },
+            }),
+        ]);
+        const sellableBatch = Number(sellableBatchAgg._sum.remainingQty ?? 0);
+        const totalBatch = Number(totalBatchAgg._sum.remainingQty ?? 0);
+        const invQty = Number(invRow?.quantity ?? 0);
+        const totalSellable = sellableBatch + Math.max(0, invQty - totalBatch);
+        if (totalSellable === 0) {
             return reply.status(404).send({
                 success: false,
                 error: { code: 'NO_SELLABLE_STOCK', message: `No sellable stock for "${result['productName']}" — all batches expired`, statusCode: 404 },
