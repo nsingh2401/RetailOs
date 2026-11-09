@@ -53,6 +53,8 @@ async function productRoutes(app) {
     // Variants
     app.post('/:storeId/products/:productId/variants', { preHandler: pre }, handler.createVariant);
     app.patch('/:storeId/products/:productId/variants/:variantId', { preHandler: pre }, handler.updateVariant);
+    // Batches per product
+    app.get('/:storeId/products/:productId/batches', { preHandler: pre }, handler.getProductBatches);
     // Categories
     app.get('/:storeId/categories', { preHandler: pre }, handler.listCategories);
     app.post('/:storeId/categories', { preHandler: pre }, handler.createCategory);

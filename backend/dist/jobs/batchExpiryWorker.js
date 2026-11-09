@@ -4,34 +4,73 @@ exports.batchExpiryQueue = void 0;
 const bullmq_1 = require("bullmq");
 const redis_1 = require("../lib/redis");
 const prisma_1 = require("../lib/prisma");
-const handler_1 = require("../modules/websocket/handler");
-const firebase_1 = require("../lib/firebase");
 exports.batchExpiryQueue = new bullmq_1.Queue('batch-expiry', {
     connection: redis_1.bullmqConnection,
 });
-// Schedule the repeating job once on startup (daily at 8:00 AM)
-exports.batchExpiryQueue.add('daily-check', {}, { repeat: { pattern: '0 8 * * *' } });
+// Schedule hourly idempotent expiry job
+exports.batchExpiryQueue.add('hourly-expiry', {}, { repeat: { pattern: '0 * * * *' } });
 new bullmq_1.Worker('batch-expiry', async () => {
-    // Get all stores with expiring batches
-    const expiringBatches = await prisma_1.prisma.$queryRaw `SELECT * FROM v_expiring_batches`;
-    for (const batch of expiringBatches) {
-        const event = {
-            type: 'BATCH_EXPIRY_ALERT',
-            data: {
-                batchId: batch.batch_id,
-                productName: batch.product_name,
-                daysToExpiry: batch.days_to_expiry,
-                remainingQty: batch.remaining_qty,
-                storeId: batch.store_id,
-            },
-        };
-        (0, handler_1.broadcastToStore)(batch.store_id, event);
-        await (0, firebase_1.sendPushNotification)({
-            topic: `store-${batch.store_id}-managers`,
-            title: 'Batch Expiry Alert',
-            body: `${batch.product_name} expires in ${batch.days_to_expiry} days (${batch.remaining_qty} units remaining)`,
-            data: { type: 'BATCH_EXPIRY', batchId: batch.batch_id },
-        });
+    const stores = await prisma_1.prisma.store.findMany({
+        where: { isActive: true },
+        select: { storeId: true, timezone: true },
+    });
+    let totalStores = 0;
+    let totalBatches = 0;
+    for (const store of stores) {
+        const tz = store.timezone ?? 'UTC';
+        // Find batches expired in this store's local timezone
+        const expired = await prisma_1.prisma.$queryRaw `
+      SELECT batch_id, variant_id, remaining_qty
+      FROM batches
+      WHERE store_id    = ${store.storeId}::uuid
+        AND is_expired  = false
+        AND remaining_qty > 0
+        AND expiry_date IS NOT NULL
+        AND expiry_date < (NOW() AT TIME ZONE ${tz})::date
+    `;
+        if (expired.length === 0)
+            continue;
+        totalStores++;
+        totalBatches += expired.length;
+        for (const b of expired) {
+            const qty = Number(b.remaining_qty);
+            if (qty <= 0)
+                continue;
+            await prisma_1.prisma.$transaction(async (tx) => {
+                // Mark expired, zero out qty
+                await tx.batch.update({
+                    where: { batchId: b.batch_id },
+                    data: { isExpired: true, remainingQty: 0 },
+                });
+                // Subtract expired qty from inventory
+                const inv = await tx.inventory.findUnique({
+                    where: { storeId_variantId: { storeId: store.storeId, variantId: b.variant_id } },
+                });
+                if (!inv)
+                    return;
+                const qtyBefore = Number(inv.quantity);
+                const qtyAfter = Math.max(0, qtyBefore - qty);
+                await tx.inventory.update({
+                    where: { storeId_variantId: { storeId: store.storeId, variantId: b.variant_id } },
+                    data: { quantity: qtyAfter },
+                });
+                await tx.inventoryMovement.create({
+                    data: {
+                        storeId: store.storeId,
+                        variantId: b.variant_id,
+                        batchId: b.batch_id,
+                        movementType: 'EXPIRED_CLEARANCE',
+                        quantityDelta: -(qtyBefore - qtyAfter),
+                        quantityBefore: qtyBefore,
+                        quantityAfter: qtyAfter,
+                        referenceType: 'BATCH',
+                        referenceId: b.batch_id,
+                        performedBy: null,
+                    },
+                });
+            });
+        }
     }
+    console.log(`[batchExpiry] expired ${totalBatches} batches across ${totalStores} stores`);
 }, { connection: redis_1.bullmqConnection });
 //# sourceMappingURL=batchExpiryWorker.js.map

@@ -5,6 +5,7 @@ const app_1 = require("./app");
 const redis_1 = require("./lib/redis");
 const typesense_1 = require("./lib/typesense");
 const goldRateWorker_1 = require("./jobs/goldRateWorker");
+require("./jobs/batchExpiryWorker");
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 async function start() {
     const app = await (0, app_1.buildApp)();

@@ -81,6 +81,12 @@ export declare function deleteCategory(request: FastifyRequest<{
         categoryId: string;
     };
 }>, reply: FastifyReply): Promise<never>;
+export declare function getProductBatches(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        productId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
 export declare function listBrands(request: FastifyRequest<{
     Params: {
         storeId: string;

@@ -113,6 +113,32 @@ async function createInvoice(request, reply) {
             lineTotal: taxableAmt + taxAmt,
         };
     });
+    // B — batch-tracked sellable stock pre-flight
+    for (const item of lineData) {
+        const v = variantMap.get(item.variantId);
+        if (!v?.product.hasBatches)
+            continue;
+        const agg = await prisma_1.prisma.batch.aggregate({
+            where: {
+                variantId: item.variantId,
+                storeId,
+                isExpired: false,
+                OR: [{ expiryDate: null }, { expiryDate: { gte: invoiceDate } }],
+            },
+            _sum: { remainingQty: true },
+        });
+        const availableQty = Number(agg._sum.remainingQty ?? 0);
+        if (availableQty < item.quantity) {
+            return reply.status(422).send({
+                success: false,
+                error: {
+                    code: 'INSUFFICIENT_STOCK',
+                    message: `Insufficient stock for "${item.productName}". Sellable: ${availableQty}, Requested: ${item.quantity}`,
+                    statusCode: 422,
+                },
+            });
+        }
+    }
     const grandTotal = subtotal - discountTotal + taxTotal;
     const grandTotalBase = grandTotal * exchangeRate;
     const rawBody = request.body;
@@ -186,7 +212,14 @@ async function confirmInvoice(request, reply) {
                 throw Object.assign(new Error('Invoice not found'), { code: 'NOT_FOUND', statusCode: 404 });
             if (invoice.status !== 'DRAFT')
                 throw Object.assign(new Error('Invoice is not in DRAFT status'), { code: 'INVOICE_NOT_DRAFT', statusCode: 409 });
-            // 2. Stock check for every line item
+            // 2. Fetch hasBatches per variant for FEFO logic
+            const lineVariantIds = invoice.lineItems.map(l => l.variantId);
+            const lineVariants = await tx.productVariant.findMany({
+                where: { variantId: { in: lineVariantIds } },
+                include: { product: { select: { hasBatches: true } } },
+            });
+            const variantHasBatches = new Map(lineVariants.map(v => [v.variantId, v.product.hasBatches]));
+            // 3. Stock check for every line item
             for (const item of invoice.lineItems) {
                 const inv = await tx.inventory.findUnique({
                     where: { storeId_variantId: { storeId, variantId: item.variantId } },
@@ -198,7 +231,7 @@ async function confirmInvoice(request, reply) {
                     throw Object.assign(new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${requested}`), { code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems' });
                 }
             }
-            // 3. Deduct stock + write movement log
+            // 4. Deduct stock + write movement log + FEFO batch deduction
             for (const item of invoice.lineItems) {
                 const inv = await tx.inventory.findUnique({
                     where: { storeId_variantId: { storeId, variantId: item.variantId } },
@@ -224,8 +257,42 @@ async function confirmInvoice(request, reply) {
                         performedBy: userId,
                     },
                 });
+                // A — FEFO batch remaining_qty deduction
+                if (variantHasBatches.get(item.variantId)) {
+                    const saleQty = Math.abs(qtyDelta);
+                    if (item.batchId) {
+                        // Specific batch supplied by billing screen
+                        await tx.batch.update({
+                            where: { batchId: item.batchId },
+                            data: { remainingQty: { decrement: saleQty } },
+                        });
+                    }
+                    else {
+                        // FEFO: deduct from earliest-expiring non-expired batches
+                        let remaining = saleQty;
+                        const batches = await tx.batch.findMany({
+                            where: {
+                                variantId: item.variantId,
+                                storeId,
+                                isExpired: false,
+                                OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }],
+                            },
+                            orderBy: { expiryDate: 'asc' },
+                        });
+                        for (const b of batches) {
+                            if (remaining <= 0)
+                                break;
+                            const deduct = Math.min(remaining, Number(b.remainingQty));
+                            await tx.batch.update({
+                                where: { batchId: b.batchId },
+                                data: { remainingQty: { decrement: deduct } },
+                            });
+                            remaining -= deduct;
+                        }
+                    }
+                }
             }
-            // 4. Confirm invoice — set terminal status by payment.
+            // 5. Confirm invoice — set terminal status by payment.
             //    Non-credit sales are paid in full at the counter → PAID;
             //    credit sales stay CONFIRMED until payment is collected.
             const isCredit = invoice.paymentMode === 'CREDIT' || Number(invoice.creditAmount) > 0;
@@ -262,21 +329,6 @@ async function confirmInvoice(request, reply) {
                     where: { customerId: invoice.customerId },
                     data: { totalPurchases: { increment: invoice.grandTotalBase } },
                 });
-            }
-            // 7. Award loyalty points for non-credit sales
-            if (invoice.customerId && !isCredit) {
-                const loyaltyRule = await tx.discountRule.findFirst({
-                    where: { storeId, type: 'LOYALTY', isActive: true, pointsPerHundred: { not: null } },
-                });
-                if (loyaltyRule?.pointsPerHundred) {
-                    const pts = Math.floor(Number(invoice.grandTotalBase) / 100) * loyaltyRule.pointsPerHundred;
-                    if (pts > 0) {
-                        await tx.customer.update({
-                            where: { customerId: invoice.customerId },
-                            data: { loyaltyPoints: { increment: pts } },
-                        });
-                    }
-                }
             }
         });
     }

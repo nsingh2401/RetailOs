@@ -6,11 +6,11 @@ export declare const DateRangeQuerySchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     from: string;
     to: string;
-    groupBy: "day" | "week" | "month";
+    groupBy: "month" | "day" | "week";
 }, {
     from: string;
     to: string;
-    groupBy?: "day" | "week" | "month" | undefined;
+    groupBy?: "month" | "day" | "week" | undefined;
 }>;
 export declare const TopProductsQuerySchema: z.ZodObject<{
     from: z.ZodString;

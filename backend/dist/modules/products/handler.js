@@ -13,6 +13,7 @@ exports.listCategories = listCategories;
 exports.createCategory = createCategory;
 exports.updateCategory = updateCategory;
 exports.deleteCategory = deleteCategory;
+exports.getProductBatches = getProductBatches;
 exports.listBrands = listBrands;
 exports.createBrand = createBrand;
 exports.saveProductImage = saveProductImage;
@@ -50,6 +51,7 @@ function buildBarcodeResult(variant, product, inventory) {
             isInclusive: product.taxRule.isInclusive,
         } : null,
         currentStock: inventory ? Number(inventory.quantity) : 0,
+        hasBatches: product.hasBatches ?? false,
         unitOfMeasure: product.unitOfMeasure,
         hsnCode: product.hsnCode,
         tabletsPerUnit: variant.tabletsPerUnit ?? null,
@@ -227,6 +229,7 @@ async function searchProducts(request, reply) {
             ]);
             let expiryDate = null;
             let batchNumber = null;
+            let batchFound = true;
             if (isFmcgStore && variant?.variantId) {
                 const batch = await prisma_1.prisma.batch.findFirst({
                     where: {
@@ -241,6 +244,7 @@ async function searchProducts(request, reply) {
                     orderBy: { expiryDate: 'asc' },
                     select: { expiryDate: true, batchNumber: true },
                 });
+                batchFound = batch != null;
                 expiryDate = batch?.expiryDate ?? null;
                 batchNumber = batch?.batchNumber ?? null;
             }
@@ -255,11 +259,12 @@ async function searchProducts(request, reply) {
                     : null,
                 expiryDate,
                 batchNumber,
+                hasSellableBatch: !isFmcgStore || batchFound,
             };
         }));
         return reply.send({
             success: true,
-            data: enriched.filter((e) => e.variantId != null),
+            data: enriched.filter((e) => e.variantId != null && e.hasSellableBatch),
         });
     }
     catch {
@@ -298,7 +303,7 @@ async function searchProducts(request, reply) {
               AND is_active  = true
             LIMIT 1
           ) pv ON true
-          LEFT JOIN LATERAL (
+          JOIN LATERAL (
             SELECT expiry_date, batch_number
             FROM batches
             WHERE variant_id  = pv.variant_id
@@ -405,7 +410,24 @@ async function lookupByBarcode(request, reply) {
             error: { code: 'PRODUCT_NOT_FOUND', message: `No product found for barcode ${code}`, statusCode: 404 },
         });
     }
-    // 4. Cache 5 min
+    // 4. Sellable-stock check for batch-tracked products
+    if (result['hasBatches']) {
+        const sellable = await prisma_1.prisma.batch.findFirst({
+            where: {
+                variantId: result['variantId'],
+                storeId,
+                isExpired: false,
+                OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }],
+            },
+        });
+        if (!sellable) {
+            return reply.status(404).send({
+                success: false,
+                error: { code: 'NO_SELLABLE_STOCK', message: `No sellable stock for "${result['productName']}" — all batches expired`, statusCode: 404 },
+            });
+        }
+    }
+    // 5. Cache 5 min
     await (0, redis_1.cacheSet)(cacheKey, result, 300);
     return reply.send({ success: true, data: result });
 }
@@ -752,6 +774,36 @@ async function deleteCategory(request, reply) {
     await prisma_1.prisma.category.delete({ where: { categoryId } });
     await (0, redis_1.cacheDelete)(`categories:${storeId}`);
     return reply.send({ success: true, data: { deleted: true } });
+}
+// ── GET /:storeId/products/:productId/batches ──────────────────
+async function getProductBatches(request, reply) {
+    const storeId = request.storeId;
+    const { productId } = request.params;
+    const variants = await prisma_1.prisma.productVariant.findMany({
+        where: { productId },
+        select: { variantId: true, variantSku: true },
+    });
+    if (variants.length === 0) {
+        return reply.send({ success: true, data: [] });
+    }
+    const variantIds = variants.map(v => v.variantId);
+    const skuMap = new Map(variants.map(v => [v.variantId, v.variantSku]));
+    const batches = await prisma_1.prisma.batch.findMany({
+        where: { variantId: { in: variantIds }, storeId },
+        orderBy: [{ isExpired: 'asc' }, { expiryDate: { sort: 'asc', nulls: 'last' } }],
+    });
+    return reply.send({
+        success: true,
+        data: batches.map(b => ({
+            batchId: b.batchId,
+            variantId: b.variantId,
+            variantSku: skuMap.get(b.variantId) ?? null,
+            batchNumber: b.batchNumber,
+            expiryDate: b.expiryDate,
+            remainingQty: Number(b.remainingQty),
+            isExpired: b.isExpired,
+        })),
+    });
 }
 // ── Brand handlers ─────────────────────────────────────────────
 // GET /:storeId/brands

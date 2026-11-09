@@ -74,4 +74,29 @@ export declare function getVariantBatches(request: FastifyRequest<{
     };
     Querystring: Record<string, unknown>;
 }>, reply: FastifyReply): Promise<never>;
+export declare function getExpiredBatches(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+    Querystring: Record<string, unknown>;
+}>, reply: FastifyReply): Promise<never>;
+export declare function deleteBatch(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        batchId: string;
+    };
+}>, reply: FastifyReply): Promise<never>;
+export declare function clearExpiredBatches(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+    };
+    Querystring: Record<string, unknown>;
+}>, reply: FastifyReply): Promise<never>;
+export declare function updateBatchExpiry(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        batchId: string;
+    };
+    Body: unknown;
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map
