@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { cacheGet, cacheSet, cacheDelete } from '../../lib/redis';
 import { searchProducts as tsSearchProducts } from '../../lib/typesense';
@@ -918,4 +919,129 @@ export async function getVariantBatches(
   });
 
   return reply.send({ success: true, data: batches });
+}
+
+// ── GET /:storeId/inventory/expired-batches (E) ───────────────
+export async function getExpiredBatches(
+  request: FastifyRequest<{
+    Params: { storeId: string };
+    Querystring: Record<string, unknown>;
+  }>,
+  reply: FastifyReply,
+) {
+  const storeId = request.storeId;
+  const month   = request.query['month'] as string | undefined; // 'YYYY-MM'
+  const q       = request.query['q'] as string | undefined;
+
+  type ExpiredRow = {
+    batch_id:      string;
+    batch_number:  string | null;
+    expiry_date:   Date | null;
+    remaining_qty: number;
+    product_name:  string;
+    variant_sku:   string;
+    variant_id:    string;
+  };
+
+  const monthFilter = month ? Prisma.sql`AND TO_CHAR(b.expiry_date, 'YYYY-MM') = ${month}` : Prisma.empty;
+  const qFilter     = q     ? Prisma.sql`AND p.name ILIKE ${'%' + q + '%'}`                  : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<ExpiredRow[]>(Prisma.sql`
+    SELECT
+      b.batch_id,
+      b.batch_number,
+      b.expiry_date,
+      b.remaining_qty,
+      p.name       AS product_name,
+      pv.variant_sku,
+      pv.variant_id
+    FROM batches b
+    JOIN product_variants pv ON pv.variant_id = b.variant_id
+    JOIN products         p  ON p.product_id  = pv.product_id
+    WHERE b.store_id   = ${storeId}::uuid
+      AND b.is_expired = true
+      ${monthFilter}
+      ${qFilter}
+    ORDER BY b.expiry_date DESC, p.name ASC
+  `);
+
+  return reply.send({ success: true, data: rows });
+}
+
+// ── DELETE /:storeId/inventory/batches/:batchId (F) ───────────
+export async function deleteBatch(
+  request: FastifyRequest<{ Params: { storeId: string; batchId: string } }>,
+  reply: FastifyReply,
+) {
+  if (!['OWNER', 'MANAGER'].includes(request.storeRole)) {
+    return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'OWNER or MANAGER required', statusCode: 403 } });
+  }
+
+  const storeId        = request.storeId;
+  const { batchId }    = request.params;
+
+  const batch = await prisma.batch.findFirst({ where: { batchId, storeId } });
+  if (!batch) return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Batch not found', statusCode: 404 } });
+
+  const movementCount = await prisma.inventoryMovement.count({ where: { batchId } });
+
+  if (movementCount === 0) {
+    await prisma.batch.delete({ where: { batchId } });
+    return reply.send({ success: true, data: { deleted: true, batchId } });
+  }
+
+  // Referenced — mark cleared and hide
+  await prisma.batch.update({
+    where: { batchId },
+    data:  { remainingQty: 0, isExpired: true },
+  });
+  return reply.send({ success: true, data: { deleted: false, batchId } });
+}
+
+// ── DELETE /:storeId/inventory/expired-batches (F clear-all) ──
+export async function clearExpiredBatches(
+  request: FastifyRequest<{
+    Params: { storeId: string };
+    Querystring: Record<string, unknown>;
+  }>,
+  reply: FastifyReply,
+) {
+  if (!['OWNER', 'MANAGER'].includes(request.storeRole)) {
+    return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'OWNER or MANAGER required', statusCode: 403 } });
+  }
+
+  const storeId = request.storeId;
+  const month   = request.query['month'] as string | undefined;
+  const q       = request.query['q'] as string | undefined;
+
+  const monthFilter2 = month ? Prisma.sql`AND TO_CHAR(b.expiry_date, 'YYYY-MM') = ${month}` : Prisma.empty;
+  const qFilter2     = q     ? Prisma.sql`AND p.name ILIKE ${'%' + q + '%'}`                  : Prisma.empty;
+
+  // Find matching expired batches
+  const batches = await prisma.$queryRaw<Array<{ batch_id: string }>>(Prisma.sql`
+    SELECT b.batch_id
+    FROM batches b
+    JOIN product_variants pv ON pv.variant_id = b.variant_id
+    JOIN products         p  ON p.product_id  = pv.product_id
+    WHERE b.store_id   = ${storeId}::uuid
+      AND b.is_expired = true
+      ${monthFilter2}
+      ${qFilter2}
+  `);
+
+  let deleted = 0;
+  let cleared = 0;
+
+  for (const { batch_id } of batches) {
+    const refs = await prisma.inventoryMovement.count({ where: { batchId: batch_id } });
+    if (refs === 0) {
+      await prisma.batch.delete({ where: { batchId: batch_id } });
+      deleted++;
+    } else {
+      await prisma.batch.update({ where: { batchId: batch_id }, data: { remainingQty: 0 } });
+      cleared++;
+    }
+  }
+
+  return reply.send({ success: true, data: { deleted, cleared } });
 }

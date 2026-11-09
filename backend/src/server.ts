@@ -3,6 +3,7 @@ import { buildApp } from './app';
 import { connectRedis } from './lib/redis';
 import { ensureCollections } from './lib/typesense';
 import { scheduleGoldRateFetch } from './jobs/goldRateWorker';
+import './jobs/batchExpiryWorker';
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 

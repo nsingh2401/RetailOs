@@ -634,7 +634,7 @@ model InventoryMovement {
   referenceId    String?      @db.Uuid @map("reference_id")
   batchId        String?      @db.Uuid @map("batch_id")
   notes          String?
-  performedBy    String       @db.Uuid @map("performed_by")
+  performedBy    String?      @db.Uuid @map("performed_by")
   deviceId       String?      @db.VarChar(100) @map("device_id")
   syncedAt       DateTime?    @db.Timestamptz() @map("synced_at")
   createdAt      DateTime     @default(now()) @db.Timestamptz() @map("created_at")
@@ -642,7 +642,7 @@ model InventoryMovement {
   store           Store          @relation(fields: [storeId], references: [storeId])
   variant         ProductVariant @relation(fields: [variantId], references: [variantId])
   batch           Batch?         @relation(fields: [batchId], references: [batchId])
-  performedByUser User           @relation(fields: [performedBy], references: [userId])
+  performedByUser User?          @relation(fields: [performedBy], references: [userId])
 
   @@map("inventory_movements")
 }

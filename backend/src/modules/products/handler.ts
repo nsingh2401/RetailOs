@@ -49,6 +49,7 @@ function buildBarcodeResult(variant: any, product: any, inventory: any): Record<
       isInclusive: product.taxRule.isInclusive,
     } : null,
     currentStock:      inventory ? Number(inventory.quantity) : 0,
+    hasBatches:        product.hasBatches ?? false,
     unitOfMeasure:     product.unitOfMeasure,
     hsnCode:           product.hsnCode,
     tabletsPerUnit:    variant.tabletsPerUnit ?? null,
@@ -260,6 +261,7 @@ export async function searchProducts(
 
         let expiryDate:  Date | null = null;
         let batchNumber: string | null = null;
+        let batchFound:  boolean = true;
         if (isFmcgStore && variant?.variantId) {
           const batch = await prisma.batch.findFirst({
             where: {
@@ -274,6 +276,7 @@ export async function searchProducts(
             orderBy: { expiryDate: 'asc' },
             select:  { expiryDate: true, batchNumber: true },
           });
+          batchFound  = batch != null;
           expiryDate  = batch?.expiryDate  ?? null;
           batchNumber = batch?.batchNumber ?? null;
         }
@@ -289,12 +292,13 @@ export async function searchProducts(
               : null,
           expiryDate,
           batchNumber,
+          hasSellableBatch: !isFmcgStore || batchFound,
         };
       }),
     );
     return reply.send({
       success: true,
-      data: enriched.filter((e: any) => e.variantId != null),
+      data: enriched.filter((e: any) => e.variantId != null && e.hasSellableBatch),
     });
   } catch {
     // Fallback to PostgreSQL if Typesense unavailable
@@ -333,7 +337,7 @@ export async function searchProducts(
               AND is_active  = true
             LIMIT 1
           ) pv ON true
-          LEFT JOIN LATERAL (
+          JOIN LATERAL (
             SELECT expiry_date, batch_number
             FROM batches
             WHERE variant_id  = pv.variant_id
@@ -450,7 +454,25 @@ export async function lookupByBarcode(
     });
   }
 
-  // 4. Cache 5 min
+  // 4. Sellable-stock check for batch-tracked products
+  if (result['hasBatches']) {
+    const sellable = await prisma.batch.findFirst({
+      where: {
+        variantId: result['variantId'] as string,
+        storeId,
+        isExpired: false,
+        OR: [{ expiryDate: null }, { expiryDate: { gte: new Date() } }],
+      },
+    });
+    if (!sellable) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'NO_SELLABLE_STOCK', message: `No sellable stock for "${result['productName']}" — all batches expired`, statusCode: 404 },
+      });
+    }
+  }
+
+  // 5. Cache 5 min
   await cacheSet(cacheKey, result, 300);
   return reply.send({ success: true, data: result });
 }

@@ -26,7 +26,12 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   app.get( '/:storeId/purchases/:purchaseId',            { preHandler: pre }, handler.getPurchaseDetail);
 
   // Batches â€” expiring before /:variantId
-  app.get( '/:storeId/batches/expiring',                 { preHandler: pre }, handler.getExpiringBatches);
-  app.get( '/:storeId/batches/:variantId',               { preHandler: pre }, handler.getVariantBatches);
+  app.get(   '/:storeId/batches/expiring',                 { preHandler: pre }, handler.getExpiringBatches);
+  app.get(   '/:storeId/batches/:variantId',               { preHandler: pre }, handler.getVariantBatches);
+
+  // Expired batch management (E / F)
+  app.get(   '/:storeId/inventory/expired-batches',        { preHandler: pre }, handler.getExpiredBatches);
+  app.delete('/:storeId/inventory/expired-batches',        { preHandler: pre }, handler.clearExpiredBatches);
+  app.delete('/:storeId/inventory/batches/:batchId',       { preHandler: pre }, handler.deleteBatch);
 }
 
