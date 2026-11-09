@@ -900,6 +900,45 @@ export async function deleteCategory(
   return reply.send({ success: true, data: { deleted: true } });
 }
 
+// ── GET /:storeId/products/:productId/batches ──────────────────
+export async function getProductBatches(
+  request: FastifyRequest<{ Params: { storeId: string; productId: string } }>,
+  reply: FastifyReply,
+) {
+  const storeId     = request.storeId;
+  const { productId } = request.params;
+
+  const variants = await prisma.productVariant.findMany({
+    where: { productId },
+    select: { variantId: true, variantSku: true },
+  });
+
+  if (variants.length === 0) {
+    return reply.send({ success: true, data: [] });
+  }
+
+  const variantIds = variants.map(v => v.variantId);
+  const skuMap     = new Map(variants.map(v => [v.variantId, v.variantSku]));
+
+  const batches = await prisma.batch.findMany({
+    where:   { variantId: { in: variantIds }, storeId },
+    orderBy: [{ isExpired: 'asc' }, { expiryDate: { sort: 'asc', nulls: 'last' } }],
+  });
+
+  return reply.send({
+    success: true,
+    data: batches.map(b => ({
+      batchId:      b.batchId,
+      variantId:    b.variantId,
+      variantSku:   skuMap.get(b.variantId) ?? null,
+      batchNumber:  b.batchNumber,
+      expiryDate:   b.expiryDate,
+      remainingQty: Number(b.remainingQty),
+      isExpired:    b.isExpired,
+    })),
+  });
+}
+
 // ── Brand handlers ─────────────────────────────────────────────
 
 // GET /:storeId/brands

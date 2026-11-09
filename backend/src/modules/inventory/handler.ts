@@ -1045,3 +1045,84 @@ export async function clearExpiredBatches(
 
   return reply.send({ success: true, data: { deleted, cleared } });
 }
+
+// ── PATCH /:storeId/inventory/batches/:batchId (expiry edit) ──
+export async function updateBatchExpiry(
+  request: FastifyRequest<{
+    Params: { storeId: string; batchId: string };
+    Body: unknown;
+  }>,
+  reply: FastifyReply,
+) {
+  if (!['OWNER', 'MANAGER'].includes(request.storeRole)) {
+    return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'OWNER or MANAGER required', statusCode: 403 } });
+  }
+
+  const storeId     = request.storeId;
+  const { batchId } = request.params;
+  const body        = request.body as Record<string, unknown>;
+  const rawExpiry   = body['expiryDate'];
+
+  const batch = await prisma.batch.findFirst({ where: { batchId, storeId } });
+  if (!batch) {
+    return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Batch not found', statusCode: 404 } });
+  }
+
+  const newExpiry = rawExpiry == null ? null : new Date(rawExpiry as string);
+
+  // Determine if the new date is in the past using the store's timezone
+  const store = await prisma.store.findUnique({ where: { storeId }, select: { timezone: true } });
+  const tz    = store?.timezone ?? 'UTC';
+
+  const [todayRow] = await prisma.$queryRaw<Array<{ today: Date }>>`
+    SELECT (NOW() AT TIME ZONE ${tz})::date AS today
+  `;
+  const todayDate = todayRow.today;
+
+  const isPast = newExpiry != null && newExpiry < todayDate;
+
+  if (isPast) {
+    // Apply expiry immediately — same logic as the hourly worker
+    await prisma.$transaction(async (tx) => {
+      const qty = Number(batch.remainingQty);
+      await tx.batch.update({
+        where: { batchId },
+        data:  { expiryDate: newExpiry, isExpired: true, remainingQty: 0 },
+      });
+      if (qty > 0) {
+        const inv = await tx.inventory.findUnique({
+          where: { storeId_variantId: { storeId, variantId: batch.variantId } },
+        });
+        if (inv) {
+          const qtyBefore = Number(inv.quantity);
+          const qtyAfter  = Math.max(0, qtyBefore - qty);
+          await tx.inventory.update({
+            where: { storeId_variantId: { storeId, variantId: batch.variantId } },
+            data:  { quantity: qtyAfter },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              storeId,
+              variantId:      batch.variantId,
+              batchId,
+              movementType:   'EXPIRED_CLEARANCE',
+              quantityDelta:  -(qtyBefore - qtyAfter),
+              quantityBefore: qtyBefore,
+              quantityAfter:  qtyAfter,
+              referenceType:  'BATCH',
+              referenceId:    batchId,
+              performedBy:    null,
+            },
+          });
+        }
+      }
+    });
+  } else {
+    await prisma.batch.update({
+      where: { batchId },
+      data:  { expiryDate: newExpiry, isExpired: false },
+    });
+  }
+
+  return reply.send({ success: true, data: { batchId, expiryDate: newExpiry, expired: isPast } });
+}
