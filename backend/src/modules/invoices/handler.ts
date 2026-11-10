@@ -325,9 +325,10 @@ export async function confirmInvoice(
             for (const b of batches) {
               if (remaining <= 0) break;
               const deduct = Math.min(remaining, Number(b.remainingQty));
+              const newQty = Math.max(0, Number(b.remainingQty) - deduct);
               await tx.batch.update({
                 where: { batchId: b.batchId },
-                data:  { remainingQty: { decrement: deduct } },
+                data:  { remainingQty: newQty },
               });
               remaining -= deduct;
             }

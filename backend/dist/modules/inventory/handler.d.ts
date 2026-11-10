@@ -99,4 +99,11 @@ export declare function updateBatchExpiry(request: FastifyRequest<{
     };
     Body: unknown;
 }>, reply: FastifyReply): Promise<never>;
+export declare function restoreBatch(request: FastifyRequest<{
+    Params: {
+        storeId: string;
+        batchId: string;
+    };
+    Body: unknown;
+}>, reply: FastifyReply): Promise<never>;
 //# sourceMappingURL=handler.d.ts.map

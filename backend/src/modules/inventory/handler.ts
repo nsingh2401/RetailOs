@@ -219,52 +219,22 @@ export async function clearExpiredStock(
     return reply.send({ success: true, data: { batchesCleared: 0, unitsRemoved: 0 } });
   }
 
-  const batchIds  = expired.map((b) => b.batch_id);
-  const totalUnits = expired.reduce((s, b) => s + Number(b.remaining_qty), 0);
-
-  await prisma.$transaction(async (tx) => {
-    // Mark batches expired + zero out remaining_qty
-    await tx.$executeRaw`
-      UPDATE batches
-      SET is_expired = true, remaining_qty = 0
-      WHERE batch_id = ANY(${batchIds}::uuid[])
-    `;
-
-    // One movement record per variant
-    const variantMap = new Map<string, number>();
-    for (const b of expired) {
-      variantMap.set(b.variant_id, (variantMap.get(b.variant_id) ?? 0) + Number(b.remaining_qty));
-    }
-
-    for (const [variantId, qty] of variantMap) {
-      const inv = await tx.inventory.findUnique({
-        where: { storeId_variantId: { storeId, variantId } },
+  // Write off per batch so every EXPIRED_CLEARANCE movement carries batchId
+  let totalUnits = 0;
+  for (const b of expired) {
+    const writeOff = Number(b.remaining_qty);
+    await prisma.$transaction(async (tx) => {
+      await writeBatchOff(tx, storeId, b.batch_id, b.variant_id, writeOff);
+      await tx.batch.update({
+        where: { batchId: b.batch_id },
+        data:  { isExpired: true, remainingQty: 0 },
       });
-      if (!inv) continue;
-      const before = Number(inv.quantity);
-      const after  = Math.max(0, before - qty);
-      await tx.inventory.update({
-        where: { storeId_variantId: { storeId, variantId } },
-        data:  { quantity: after },
-      });
-      await tx.inventoryMovement.create({
-        data: {
-          storeId,
-          variantId,
-          movementType:   'EXPIRED_CLEARANCE',
-          quantityDelta:  -qty,
-          quantityBefore: before,
-          quantityAfter:  after,
-          performedBy:    (request as any).authUser.userId,
-          referenceType:  'EXPIRED_CLEARANCE',
-          notes:          `Expired stock cleared — ${expired.filter(b => b.variant_id === variantId).length} batch(es)`,
-        },
-      });
-    }
-  });
+    });
+    totalUnits += writeOff;
+  }
 
   await cacheDelete(`low_stock:${storeId}`);
-  return reply.send({ success: true, data: { batchesCleared: batchIds.length, unitsRemoved: totalUnits } });
+  return reply.send({ success: true, data: { batchesCleared: expired.length, unitsRemoved: totalUnits } });
 }
 
 // GET /:storeId/inventory/low-stock
@@ -938,28 +908,37 @@ export async function getExpiredBatches(
     batch_number:  string | null;
     expiry_date:   Date | null;
     remaining_qty: number;
+    is_expired:    boolean;
     product_name:  string;
     variant_sku:   string;
     variant_id:    string;
   };
 
   const monthFilter = month ? Prisma.sql`AND TO_CHAR(b.expiry_date, 'YYYY-MM') = ${month}` : Prisma.empty;
-  const qFilter     = q     ? Prisma.sql`AND p.name ILIKE ${'%' + q + '%'}`                  : Prisma.empty;
+  const qFilter     = q     ? Prisma.sql`AND p.name ILIKE ${'%' + q + '%'}`                 : Prisma.empty;
 
+  // Show batches that still matter:
+  // 1. Already flagged expired in the last 90 days (written-off history)
+  // 2. Past expiry date but not yet flagged — still has stock, needs attention
   const rows = await prisma.$queryRaw<ExpiredRow[]>(Prisma.sql`
     SELECT
       b.batch_id,
       b.batch_number,
       b.expiry_date,
       b.remaining_qty,
+      b.is_expired,
       p.name       AS product_name,
       pv.variant_sku,
       pv.variant_id
     FROM batches b
     JOIN product_variants pv ON pv.variant_id = b.variant_id
     JOIN products         p  ON p.product_id  = pv.product_id
-    WHERE b.store_id   = ${storeId}::uuid
-      AND b.is_expired = true
+    WHERE b.store_id = ${storeId}::uuid
+      AND (
+        (b.is_expired = true  AND (b.expiry_date IS NULL OR b.expiry_date >= NOW() - INTERVAL '90 days'))
+        OR
+        (b.is_expired = false AND b.expiry_date < NOW() AND b.remaining_qty > 0)
+      )
       ${monthFilter}
       ${qFilter}
     ORDER BY b.expiry_date DESC, p.name ASC
@@ -1066,14 +1045,18 @@ export async function clearExpiredBatches(
   const monthFilter2 = month ? Prisma.sql`AND TO_CHAR(b.expiry_date, 'YYYY-MM') = ${month}` : Prisma.empty;
   const qFilter2     = q     ? Prisma.sql`AND p.name ILIKE ${'%' + q + '%'}`                  : Prisma.empty;
 
-  // Find matching expired batches with their remaining_qty and variantId
+  // Find matching expired batches — same filter as getExpiredBatches
   const batches = await prisma.$queryRaw<Array<{ batch_id: string; variant_id: string; remaining_qty: number }>>(Prisma.sql`
     SELECT b.batch_id, b.variant_id, b.remaining_qty
     FROM batches b
     JOIN product_variants pv ON pv.variant_id = b.variant_id
     JOIN products         p  ON p.product_id  = pv.product_id
-    WHERE b.store_id   = ${storeId}::uuid
-      AND b.is_expired = true
+    WHERE b.store_id = ${storeId}::uuid
+      AND (
+        (b.is_expired = true  AND (b.expiry_date IS NULL OR b.expiry_date >= NOW() - INTERVAL '90 days'))
+        OR
+        (b.is_expired = false AND b.expiry_date < NOW() AND b.remaining_qty > 0)
+      )
       ${monthFilter2}
       ${qFilter2}
   `);
@@ -1146,6 +1129,19 @@ export async function updateBatchExpiry(
   const isPast = newExpiry != null && newExpiry < todayDate;
 
   if (isPast) {
+    const confirmWriteOff = !!body['confirmWriteOff'];
+    const writeOffUnits   = Number(batch.remainingQty);
+    if (!confirmWriteOff) {
+      return reply.status(422).send({
+        success: false,
+        error: {
+          code:          'CONFIRM_REQUIRED',
+          message:       `${writeOffUnits} unit(s) will be written off. Send confirmWriteOff: true to proceed.`,
+          writeOffUnits,
+          statusCode:    422,
+        },
+      });
+    }
     // Apply expiry immediately — same logic as the hourly worker
     await prisma.$transaction(async (tx) => {
       const qty = Number(batch.remainingQty);
@@ -1189,4 +1185,118 @@ export async function updateBatchExpiry(
   }
 
   return reply.send({ success: true, data: { batchId, expiryDate: newExpiry, expired: isPast } });
+}
+
+// ── POST /:storeId/inventory/batches/:batchId/restore ─────────
+export async function restoreBatch(
+  request: FastifyRequest<{
+    Params: { storeId: string; batchId: string };
+    Body: unknown;
+  }>,
+  reply: FastifyReply,
+) {
+  if (!['OWNER', 'MANAGER'].includes(request.storeRole)) {
+    return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'OWNER or MANAGER required', statusCode: 403 } });
+  }
+
+  const storeId     = request.storeId;
+  const { batchId } = request.params;
+  const body        = request.body as Record<string, unknown>;
+
+  const batch = await prisma.batch.findFirst({ where: { batchId, storeId } });
+  if (!batch) {
+    return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Batch not found', statusCode: 404 } });
+  }
+  if (!batch.isExpired) {
+    return reply.status(409).send({ success: false, error: { code: 'ALREADY_ACTIVE', message: 'Batch is not expired — nothing to restore', statusCode: 409 } });
+  }
+  if (Number(batch.remainingQty) > 0) {
+    return reply.status(409).send({ success: false, error: { code: 'HAS_STOCK', message: 'Batch still has remaining stock — cannot restore', statusCode: 409 } });
+  }
+
+  // Restore qty = what was cleared by the most-recent EXPIRED_CLEARANCE movement
+  const clearance = await prisma.inventoryMovement.findFirst({
+    where:   { batchId, storeId, movementType: 'EXPIRED_CLEARANCE' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!clearance) {
+    return reply.status(400).send({ success: false, error: { code: 'NO_CLEARANCE_MOVEMENT', message: 'No expiry clearance movement found for this batch. It may have been hard-deleted.', statusCode: 400 } });
+  }
+  const restoreQty = Math.abs(Number(clearance.quantityDelta));
+  if (restoreQty === 0) {
+    return reply.status(400).send({ success: false, error: { code: 'NOTHING_TO_RESTORE', message: 'The clearance movement recorded 0 units — nothing to restore', statusCode: 400 } });
+  }
+
+  const rawNewExpiry = body['newExpiryDate'];
+  if (!rawNewExpiry) {
+    return reply.status(400).send({ success: false, error: { code: 'MISSING_EXPIRY', message: 'newExpiryDate is required', statusCode: 400 } });
+  }
+  const newExpiry = new Date(rawNewExpiry as string);
+  if (isNaN(newExpiry.getTime())) {
+    return reply.status(400).send({ success: false, error: { code: 'INVALID_DATE', message: 'newExpiryDate is not a valid date', statusCode: 400 } });
+  }
+
+  // Date must be strictly after today in the store's timezone
+  const store = await prisma.store.findUnique({ where: { storeId }, select: { timezone: true } });
+  const tz    = store?.timezone ?? 'UTC';
+  const [todayRow] = await prisma.$queryRaw<Array<{ today: Date }>>`
+    SELECT (NOW() AT TIME ZONE ${tz})::date AS today
+  `;
+  if (newExpiry <= todayRow.today) {
+    return reply.status(400).send({ success: false, error: { code: 'EXPIRY_NOT_FUTURE', message: 'newExpiryDate must be after today', statusCode: 400 } });
+  }
+
+  const oldExpiryStr = batch.expiryDate
+    ? batch.expiryDate.toISOString().substring(0, 10)
+    : 'unknown';
+
+  await prisma.$transaction(async (tx) => {
+    await tx.batch.update({
+      where: { batchId },
+      data:  { expiryDate: newExpiry, isExpired: false, remainingQty: restoreQty },
+    });
+
+    const inv = await tx.inventory.findUnique({
+      where:  { storeId_variantId: { storeId, variantId: batch.variantId } },
+      select: { quantity: true },
+    });
+    const qtyBefore = Number(inv?.quantity ?? 0);
+    const qtyAfter  = qtyBefore + restoreQty;
+
+    if (inv) {
+      await tx.inventory.update({
+        where: { storeId_variantId: { storeId, variantId: batch.variantId } },
+        data:  { quantity: qtyAfter },
+      });
+    } else {
+      await tx.inventory.create({
+        data: { storeId, variantId: batch.variantId, quantity: restoreQty },
+      });
+    }
+
+    await tx.inventoryMovement.create({
+      data: {
+        storeId,
+        variantId:      batch.variantId,
+        batchId,
+        movementType:   'ADJUSTMENT',
+        quantityDelta:  restoreQty,
+        quantityBefore: qtyBefore,
+        quantityAfter:  qtyAfter,
+        referenceType:  'BATCH_RESTORE',
+        referenceId:    batchId,
+        notes:          `Restored from batch expired on ${oldExpiryStr}`,
+        performedBy:    request.authUser.userId,
+      },
+    });
+  });
+
+  return reply.send({
+    success: true,
+    data: {
+      batchId,
+      restoredQty:   restoreQty,
+      newExpiryDate: newExpiry,
+    },
+  });
 }
