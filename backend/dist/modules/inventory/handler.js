@@ -240,7 +240,7 @@ async function adjustStock(request, reply) {
     if (!parsed.success) {
         return reply.status(400).send({
             success: false,
-            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
         });
     }
     const body = parsed.data;
@@ -257,8 +257,18 @@ async function adjustStock(request, reply) {
             const quantityBefore = Number(inv.quantity);
             const quantityAfter = quantityBefore + body.quantityDelta;
             if (quantityAfter < 0) {
+                const v = await tx.productVariant.findUnique({
+                    where: { variantId: body.variantId },
+                    include: { product: { select: { name: true, unitOfMeasure: true } } },
+                });
                 throw Object.assign(new Error('Adjustment would result in negative stock'), {
                     code: 'INSUFFICIENT_STOCK', status: 422,
+                    details: {
+                        productName: v?.product.name ?? null,
+                        available: quantityBefore,
+                        requested: Math.abs(body.quantityDelta),
+                        unit: v?.product.unitOfMeasure ?? null,
+                    },
                 });
             }
             await tx.inventory.update({
@@ -288,7 +298,7 @@ async function adjustStock(request, reply) {
             return reply.status(404).send({ success: false, error: { code: err.code, message: err.message, statusCode: 404 } });
         }
         if (err.code === 'INSUFFICIENT_STOCK') {
-            return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, statusCode: 422 } });
+            return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, statusCode: 422, details: err.details } });
         }
         throw err;
     }
@@ -307,7 +317,7 @@ async function getMovementHistory(request, reply) {
     if (!parsed.success) {
         return reply.status(400).send({
             success: false,
-            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
         });
     }
     const { page, limit, from, to, movementType } = parsed.data;
@@ -515,7 +525,7 @@ async function createPurchase(request, reply) {
     if (!parsed.success) {
         return reply.status(400).send({
             success: false,
-            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+            error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
         });
     }
     const body = parsed.data;
@@ -739,6 +749,7 @@ async function getExpiredBatches(request, reply) {
       b.batch_id,
       b.batch_number,
       b.expiry_date,
+      b.quantity,
       b.remaining_qty,
       b.is_expired,
       p.name       AS product_name,

@@ -323,7 +323,7 @@ export async function adjustStock(
   if (!parsed.success) {
     return reply.status(400).send({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
     });
   }
   const body = parsed.data;
@@ -344,8 +344,18 @@ export async function adjustStock(
       const quantityAfter  = quantityBefore + body.quantityDelta;
 
       if (quantityAfter < 0) {
+        const v = await tx.productVariant.findUnique({
+          where:   { variantId: body.variantId },
+          include: { product: { select: { name: true, unitOfMeasure: true } } },
+        });
         throw Object.assign(new Error('Adjustment would result in negative stock'), {
           code: 'INSUFFICIENT_STOCK', status: 422,
+          details: {
+            productName: v?.product.name ?? null,
+            available:   quantityBefore,
+            requested:   Math.abs(body.quantityDelta),
+            unit:        v?.product.unitOfMeasure ?? null,
+          },
         });
       }
 
@@ -377,7 +387,7 @@ export async function adjustStock(
       return reply.status(404).send({ success: false, error: { code: err.code, message: err.message, statusCode: 404 } });
     }
     if (err.code === 'INSUFFICIENT_STOCK') {
-      return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, statusCode: 422 } });
+      return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, statusCode: 422, details: err.details } });
     }
     throw err;
   }
@@ -402,7 +412,7 @@ export async function getMovementHistory(
   if (!parsed.success) {
     return reply.status(400).send({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
     });
   }
   const { page, limit, from, to, movementType } = parsed.data;
@@ -635,7 +645,7 @@ export async function createPurchase(
   if (!parsed.success) {
     return reply.status(400).send({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400 },
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.message, statusCode: 400, details: parsed.error.issues },
     });
   }
   const body = parsed.data;
@@ -907,6 +917,7 @@ export async function getExpiredBatches(
     batch_id:      string;
     batch_number:  string | null;
     expiry_date:   Date | null;
+    quantity:      number;
     remaining_qty: number;
     is_expired:    boolean;
     product_name:  string;
@@ -925,6 +936,7 @@ export async function getExpiredBatches(
       b.batch_id,
       b.batch_number,
       b.expiry_date,
+      b.quantity,
       b.remaining_qty,
       b.is_expired,
       p.name       AS product_name,

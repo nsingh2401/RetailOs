@@ -161,6 +161,12 @@ export async function createInvoice(
           code:       'INSUFFICIENT_STOCK',
           message:    `Insufficient stock for "${item.productName}". Sellable: ${availableQty}, Requested: ${item.quantity}`,
           statusCode: 422,
+          details: {
+            productName: item.productName,
+            available:   availableQty,
+            requested:   item.quantity,
+            unit:        v.product.unitOfMeasure,
+          },
         },
       });
     }
@@ -252,9 +258,10 @@ export async function confirmInvoice(
       const lineVariantIds = invoice.lineItems.map(l => l.variantId);
       const lineVariants   = await tx.productVariant.findMany({
         where:   { variantId: { in: lineVariantIds } },
-        include: { product: { select: { hasBatches: true } } },
+        include: { product: { select: { hasBatches: true, name: true, unitOfMeasure: true } } },
       });
       const variantHasBatches = new Map(lineVariants.map(v => [v.variantId, v.product.hasBatches]));
+      const variantInfo       = new Map(lineVariants.map(v => [v.variantId, { productName: v.product.name, unit: v.product.unitOfMeasure }]));
 
       // 3. Stock check for every line item
       for (const item of invoice.lineItems) {
@@ -267,7 +274,15 @@ export async function confirmInvoice(
         if (available < requested) {
           throw Object.assign(
             new Error(`Insufficient stock for variant ${item.variantId}. Available: ${available}, Requested: ${requested}`),
-            { code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems' },
+            {
+              code: 'INSUFFICIENT_STOCK', statusCode: 422, field: 'lineItems',
+              details: {
+                productName: variantInfo.get(item.variantId)?.productName ?? null,
+                available,
+                requested,
+                unit:        variantInfo.get(item.variantId)?.unit ?? null,
+              },
+            },
           );
         }
       }
@@ -387,7 +402,7 @@ export async function confirmInvoice(
       return reply.status(409).send({ success: false, error: { code: err.code, message: err.message, statusCode: 409 } });
     }
     if (err.code === 'INSUFFICIENT_STOCK') {
-      return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, field: 'lineItems', statusCode: 422 } });
+      return reply.status(422).send({ success: false, error: { code: err.code, message: err.message, field: 'lineItems', statusCode: 422, details: err.details } });
     }
     throw err;
   }

@@ -855,6 +855,7 @@ async function getProductBatches(request, reply) {
             variantSku: skuMap.get(b.variantId) ?? null,
             batchNumber: b.batchNumber,
             expiryDate: b.expiryDate,
+            quantity: Number(b.quantity),
             remainingQty: Number(b.remainingQty),
             isExpired: b.isExpired,
         })),
